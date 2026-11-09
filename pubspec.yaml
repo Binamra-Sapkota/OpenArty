@@ -1,0 +1,59 @@
+name: opencreate
+description: OpenCreate - A free, open-source digital painting app inspired by professional tools.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.2
+
+  # Image processing
+  image: ^4.1.7
+
+  # File/sharing
+  share_plus: ^10.1.4
+  permission_handler: ^11.3.0
+
+  # UI / color picking
+  flutter_colorpicker: ^1.0.3
+  flex_color_picker: ^3.3.0
+
+  # Utilities
+  uuid: ^4.3.3
+  intl: ^0.19.0
+  collection: ^1.18.0
+  vector_math: ^2.1.4
+
+  # Icons & fonts
+  cupertino_icons: ^1.0.6
+  material_design_icons_flutter: ^7.0.7296
+  image_picker: ^1.2.4
+  pdf: ^3.13.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.3.9
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/brushes/
+    - assets/icons/

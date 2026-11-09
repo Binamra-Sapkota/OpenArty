@@ -1,0 +1,724 @@
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../models/canvas_model.dart';
+import '../../providers/canvas_provider.dart';
+import '../../providers/layer_provider.dart';
+import '../../providers/brush_provider.dart';
+import '../../widgets/canvas/canvas_painter.dart';
+import '../../utils/image_utils.dart';
+
+/// Clean, responsive top toolbar.
+/// Eliminates the 147px overflow by grouping secondary tools into a sleek overflow menu.
+class TopToolbar extends ConsumerWidget {
+  final VoidCallback onToggleBrushPanel;
+  final VoidCallback onToggleLayerPanel;
+  final bool isBrushPanelOpen;
+  final bool isLayerPanelOpen;
+
+  const TopToolbar({
+    super.key,
+    required this.onToggleBrushPanel,
+    required this.onToggleLayerPanel,
+    required this.isBrushPanelOpen,
+    required this.isLayerPanelOpen,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canvasState = ref.watch(canvasProvider);
+    final canvasNotifier = ref.read(canvasProvider.notifier);
+
+    final canUndo = canvasState.undoStack.isNotEmpty;
+    final canRedo = canvasState.redoStack.isNotEmpty;
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        border: Border(bottom: BorderSide(color: Colors.white12, width: 0.8)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showTitle = constraints.maxWidth >= 480;
+
+          return Row(
+            children: [
+              // Back to Gallery
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
+                tooltip: 'Gallery',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+
+              // Title shown only on wider screens/tablets
+              if (showTitle) ...[
+                const SizedBox(width: 4),
+                const Text(
+                  'OpenCreate',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+
+              const Spacer(),
+
+              // Undo
+              IconButton(
+                icon: const Icon(Icons.undo, size: 20),
+                color: canUndo ? Colors.white : Colors.white24,
+                tooltip: 'Undo',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: canUndo ? () => canvasNotifier.undo() : null,
+              ),
+
+              // Redo
+              IconButton(
+                icon: const Icon(Icons.redo, size: 20),
+                color: canRedo ? Colors.white : Colors.white24,
+                tooltip: 'Redo',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: canRedo ? () => canvasNotifier.redo() : null,
+              ),
+
+              // Fit to Screen
+              IconButton(
+                icon: const Icon(Icons.fit_screen_outlined, size: 20),
+                color: Colors.white70,
+                tooltip: 'Fit Canvas to Screen',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: () {
+                  final media = MediaQuery.of(context).size;
+                  canvasNotifier.fitToScreen(Size(media.width, media.height - 110));
+                },
+              ),
+
+              // Brush Studio toggle
+              IconButton(
+                icon: Icon(
+                  Icons.brush,
+                  size: 20,
+                  color: isBrushPanelOpen
+                      ? const Color(0xFF6C63FF)
+                      : Colors.white70,
+                ),
+                tooltip: 'Brush Studio',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: onToggleBrushPanel,
+              ),
+
+              // Layer Panel toggle
+              IconButton(
+                icon: Icon(
+                  Icons.layers,
+                  size: 20,
+                  color: isLayerPanelOpen
+                      ? const Color(0xFF6C63FF)
+                      : Colors.white70,
+                ),
+                tooltip: 'Layers',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: onToggleLayerPanel,
+              ),
+
+              // Overflow Menu for All Secondary Actions
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
+                tooltip: 'Options & Canvas Settings',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                color: const Color(0xFF2C2C2C),
+                onSelected: (value) => _handleMenuSelection(value, context, ref),
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: Row(
+                      children: [
+                        Icon(Icons.share, color: Color(0xFF6C63FF), size: 18),
+                        SizedBox(width: 10),
+                        Text('Export & Share', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'import_layer',
+                    child: Row(
+                      children: [
+                        Icon(Icons.add_photo_alternate, color: Colors.amber, size: 18),
+                        SizedBox(width: 10),
+                        Text('Import Image to Layer', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'reference_image',
+                    child: Row(
+                      children: [
+                        Icon(Icons.image_outlined, color: Colors.lightBlueAccent, size: 18),
+                        SizedBox(width: 10),
+                        Text('Reference Image', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  CheckedPopupMenuItem(
+                    value: 'grid',
+                    checked: canvasState.showGrid,
+                    child: const Text('Show Grid', style: TextStyle(color: Colors.white)),
+                  ),
+                  const PopupMenuItem(
+                    value: 'symmetry',
+                    child: Row(
+                      children: [
+                        Icon(Icons.call_split, color: Colors.white70, size: 18),
+                        SizedBox(width: 10),
+                        Text('Symmetry Guide...', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  CheckedPopupMenuItem(
+                    value: 'palm_rejection',
+                    checked: canvasState.palmRejectionEnabled,
+                    child: const Text('Palm Rejection', style: TextStyle(color: Colors.white)),
+                  ),
+                  CheckedPopupMenuItem(
+                    value: 'stylus_only',
+                    checked: canvasState.stylusOnlyMode,
+                    child: const Text('Stylus Only Mode', style: TextStyle(color: Colors.white)),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'canvas_props',
+                    child: Row(
+                      children: [
+                        Icon(Icons.tune, color: Colors.white70, size: 18),
+                        SizedBox(width: 10),
+                        Text('Canvas Properties', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'clear_layer',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                        SizedBox(width: 10),
+                        Text('Clear Active Layer', style: TextStyle(color: Colors.redAccent)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _handleMenuSelection(String value, BuildContext context, WidgetRef ref) {
+    final canvasNotifier = ref.read(canvasProvider.notifier);
+    final layerState = ref.read(layerProvider);
+
+    switch (value) {
+      case 'export':
+        _exportCanvas(context, ref);
+        break;
+      case 'import_layer':
+        _importImageAsLayer(context, ref);
+        break;
+      case 'reference_image':
+        _importReferenceImage(context, ref);
+        break;
+      case 'grid':
+        canvasNotifier.toggleGrid();
+        break;
+      case 'symmetry':
+        _showSymmetryDialog(context, ref);
+        break;
+      case 'palm_rejection':
+        canvasNotifier.togglePalmRejection();
+        break;
+      case 'stylus_only':
+        canvasNotifier.toggleStylusOnlyMode();
+        break;
+      case 'canvas_props':
+        _showCanvasPropsDialog(context, ref);
+        break;
+      case 'clear_layer':
+        _confirmClear(context, canvasNotifier, layerState.activeLayerId);
+        break;
+    }
+  }
+
+  Future<void> _importImageAsLayer(BuildContext context, WidgetRef ref) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        ref.read(layerProvider.notifier).addImageLayer(bytes, name: file.name);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Imported image as a new layer')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importReferenceImage(BuildContext context, WidgetRef ref) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+      if (file != null) {
+        ref.read(canvasProvider.notifier).setReferenceImage(
+              ReferenceImageData(path: file.path),
+            );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reference image added to canvas')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick reference image: $e')),
+        );
+      }
+    }
+  }
+
+  void _showSymmetryDialog(BuildContext context, WidgetRef ref) {
+    final canvasState = ref.read(canvasProvider);
+    final canvasNotifier = ref.read(canvasProvider.notifier);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: const Color(0xFF2C2C2C),
+        title: const Text('Symmetry Guide', style: TextStyle(color: Colors.white)),
+        children: [
+          RadioListTile<SymmetryMode>(
+            title: const Text('No Symmetry', style: TextStyle(color: Colors.white)),
+            value: SymmetryMode.none,
+            groupValue: canvasState.symmetryMode,
+            onChanged: (mode) {
+              if (mode != null) canvasNotifier.setSymmetry(mode);
+              Navigator.of(ctx).pop();
+            },
+          ),
+          RadioListTile<SymmetryMode>(
+            title: const Text('Vertical Mirror', style: TextStyle(color: Colors.white)),
+            value: SymmetryMode.vertical,
+            groupValue: canvasState.symmetryMode,
+            onChanged: (mode) {
+              if (mode != null) canvasNotifier.setSymmetry(mode);
+              Navigator.of(ctx).pop();
+            },
+          ),
+          RadioListTile<SymmetryMode>(
+            title: const Text('Horizontal Mirror', style: TextStyle(color: Colors.white)),
+            value: SymmetryMode.horizontal,
+            groupValue: canvasState.symmetryMode,
+            onChanged: (mode) {
+              if (mode != null) canvasNotifier.setSymmetry(mode);
+              Navigator.of(ctx).pop();
+            },
+          ),
+          RadioListTile<SymmetryMode>(
+            title: const Text('Radial Symmetry (8-way)', style: TextStyle(color: Colors.white)),
+            value: SymmetryMode.radial,
+            groupValue: canvasState.symmetryMode,
+            onChanged: (mode) {
+              if (mode != null) canvasNotifier.setSymmetry(mode);
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCanvasPropsDialog(BuildContext context, WidgetRef ref) {
+    final canvasState = ref.read(canvasProvider);
+    final canvas = canvasState.canvas;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2C),
+        title: const Text('Canvas Properties', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Dimensions: ${canvas.width} × ${canvas.height} px',
+                style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            Text('Resolution: ${canvas.dpi} DPI',
+                style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 16),
+            const Text('Background Color:',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _bgColorOption(ctx, ref, Colors.transparent, 'Transparent', Icons.grid_view),
+                const SizedBox(width: 8),
+                _bgColorOption(ctx, ref, Colors.white, 'White', Icons.square),
+                const SizedBox(width: 8),
+                _bgColorOption(ctx, ref, Colors.black, 'Black', Icons.square),
+                const SizedBox(width: 8),
+                _bgColorOption(ctx, ref, const Color(0xFFF0EBE1), 'Warm', Icons.square),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Close'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bgColorOption(
+      BuildContext context, WidgetRef ref, Color color, String tooltip, IconData icon) {
+    return GestureDetector(
+      onTap: () {
+        final current = ref.read(canvasProvider).canvas;
+        final updated = CanvasModel(
+          width: current.width,
+          height: current.height,
+          dpi: current.dpi,
+          backgroundColor: color,
+        );
+        ref.read(canvasProvider.notifier).setCanvas(updated);
+        Navigator.of(context).pop();
+      },
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: color == Colors.transparent ? Colors.grey[800] : color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white38),
+        ),
+        child: color == Colors.transparent
+            ? const Icon(Icons.grid_view, size: 16, color: Colors.white70)
+            : null,
+      ),
+    );
+  }
+
+  void _confirmClear(
+      BuildContext context, CanvasNotifier notifier, String layerId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2C),
+        title: const Text('Clear Layer?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'This will clear all strokes on the current layer. You can still undo this.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          TextButton(
+            child: const Text('Clear', style: TextStyle(color: Colors.redAccent)),
+            onPressed: () {
+              notifier.clearLayer(layerId);
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportCanvas(BuildContext context, WidgetRef ref) async {
+    final canvasState = ref.read(canvasProvider);
+    final layerState = ref.read(layerProvider);
+    final brushList = ref.read(brushListProvider);
+    final brushMap = {for (final b in brushList) b.id: b};
+
+    final width = canvasState.canvas.width;
+    final height = canvasState.canvas.height;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    final painter = CanvasPainter(
+      layers: layerState.layers,
+      committedStrokes: canvasState.committedStrokes,
+      currentStrokes: const [],
+      activeLayerId: canvasState.activeLayerId,
+      brushMap: brushMap,
+      showGrid: false,
+      gridSize: canvasState.gridSize,
+      symmetryMode: SymmetryMode.none,
+      radialSymmetryCount: canvasState.radialSymmetryCount,
+      showSymmetryGuide: false,
+      canvasState: canvasState,
+    );
+
+    painter.paint(canvas, Size(width.toDouble(), height.toDouble()));
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF222222),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Export Artwork',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // 1. PNG Export
+              _exportFormatTile(
+                context: ctx,
+                title: 'PNG Image (.png)',
+                subtitle: 'Lossless raster with transparent background',
+                icon: Icons.image,
+                iconColor: const Color(0xFF6C63FF),
+                onSave: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPng(image, 'Artwork');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Saved PNG to:\n$path')),
+                    );
+                  }
+                },
+                onShare: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPng(image, 'Artwork');
+                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                },
+              ),
+
+              const Divider(color: Colors.white12, height: 16),
+
+              // 2. JPEG / JPG Export
+              _exportFormatTile(
+                context: ctx,
+                title: 'JPEG Image (.jpg)',
+                subtitle: 'Compressed photographic format (high quality 92%)',
+                icon: Icons.photo,
+                iconColor: Colors.amber,
+                onSave: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Saved JPEG to:\n$path')),
+                    );
+                  }
+                },
+                onShare: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
+                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                },
+              ),
+
+              const Divider(color: Colors.white12, height: 16),
+
+              // 3. SVG Vector Export
+              _exportFormatTile(
+                context: ctx,
+                title: 'SVG Vector (.svg)',
+                subtitle: 'Scalable vector strokes for Illustrator & Inkscape',
+                icon: Icons.polyline,
+                iconColor: const Color(0xFF00E5FF),
+                onSave: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsSvg(
+                    width: width,
+                    height: height,
+                    layers: layerState.layers,
+                    committedStrokes: canvasState.committedStrokes,
+                    projectName: 'Artwork',
+                    backgroundColor: canvasState.canvas.backgroundColor,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Saved SVG to:\n$path')),
+                    );
+                  }
+                },
+                onShare: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsSvg(
+                    width: width,
+                    height: height,
+                    layers: layerState.layers,
+                    committedStrokes: canvasState.committedStrokes,
+                    projectName: 'Artwork',
+                    backgroundColor: canvasState.canvas.backgroundColor,
+                  );
+                  await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenCreate');
+                },
+              ),
+
+              const Divider(color: Colors.white12, height: 16),
+
+              // 4. PDF Document Export
+              _exportFormatTile(
+                context: ctx,
+                title: 'PDF Document (.pdf)',
+                subtitle: 'Print-ready portable document at full canvas resolution',
+                icon: Icons.picture_as_pdf,
+                iconColor: Colors.redAccent,
+                onSave: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPdf(
+                    image,
+                    'Artwork',
+                    width: width,
+                    height: height,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Saved PDF to:\n$path')),
+                    );
+                  }
+                },
+                onShare: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPdf(
+                    image,
+                    'Artwork',
+                    width: width,
+                    height: height,
+                  );
+                  await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenCreate');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _exportFormatTile({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onSave,
+    required VoidCallback onShare,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2C),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Save button
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white70, size: 20),
+            tooltip: 'Save',
+            onPressed: onSave,
+          ),
+          // Share button
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.white70, size: 20),
+            tooltip: 'Share',
+            onPressed: onShare,
+          ),
+        ],
+      ),
+    );
+  }
+}
