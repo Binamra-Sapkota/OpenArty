@@ -14,22 +14,19 @@ class ImageUtils {
   ImageUtils._();
 
   /// Resolve export directory for saved artworks
-  static Future<Directory> getExportDirectory() async {
-    Directory? dir;
+  static Future<Directory> getExportDirectory({String folder = 'Pictures'}) async {
     if (Platform.isAndroid) {
       try {
-        final picturesDir = Directory('/storage/emulated/0/Pictures/OpenCreate');
-        if (!await picturesDir.exists()) {
-          await picturesDir.create(recursive: true);
+        final targetDir = Directory('/storage/emulated/0/$folder/OpenCreate');
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
         }
-        dir = picturesDir;
-      } catch (_) {
-        dir = null;
-      }
+        return targetDir;
+      } catch (_) {}
     }
-    dir ??= await getExternalStorageDirectory() ??
+    final dir = await getExternalStorageDirectory() ??
         await getApplicationDocumentsDirectory();
-    final exportDir = Directory('${dir.path}/OpenCreate/exports');
+    final exportDir = Directory('${dir.path}/$folder/OpenCreate');
     if (!await exportDir.exists()) {
       await exportDir.create(recursive: true);
     }
@@ -68,9 +65,11 @@ class ImageUtils {
 
   /// Export canvas as PNG
   static Future<String> exportAsPng(
-      ui.Image image, String projectName) async {
+      ui.Image image, String projectName, {String? customDir}) async {
     final bytes = await imageToBytes(image);
-    final exportDir = await getExportDirectory();
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${exportDir.path}/${projectName}_$timestamp.png');
     await file.writeAsBytes(bytes);
@@ -79,12 +78,14 @@ class ImageUtils {
 
   /// Export canvas as JPEG / JPG
   static Future<String> exportAsJpeg(
-      ui.Image image, String projectName, {int quality = 92}) async {
+      ui.Image image, String projectName, {int quality = 92, String? customDir}) async {
     final pngBytes = await imageToBytes(image);
     final imgImage = img.decodePng(pngBytes);
     if (imgImage == null) throw Exception('Failed to decode image');
     final jpegBytes = img.encodeJpg(imgImage, quality: quality);
-    final exportDir = await getExportDirectory();
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${exportDir.path}/${projectName}_$timestamp.jpg');
     await file.writeAsBytes(jpegBytes);
@@ -99,6 +100,7 @@ class ImageUtils {
     required Map<String, List<DrawStroke>> committedStrokes,
     required String projectName,
     Color? backgroundColor,
+    String? customDir,
   }) async {
     final sb = StringBuffer();
     sb.writeln('<?xml version="1.0" encoding="UTF-8"?>');
@@ -216,7 +218,9 @@ class ImageUtils {
 
     sb.writeln('</svg>');
 
-    final exportDir = await getExportDirectory();
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${exportDir.path}/${projectName}_$timestamp.svg');
     await file.writeAsString(sb.toString());
@@ -229,6 +233,7 @@ class ImageUtils {
     String projectName, {
     int width = 1080,
     int height = 1080,
+    String? customDir,
   }) async {
     final bytes = await imageToBytes(image);
     final pdf = pw.Document();
@@ -255,7 +260,9 @@ class ImageUtils {
     );
 
     final pdfBytes = await pdf.save();
-    final exportDir = await getExportDirectory();
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${exportDir.path}/${projectName}_$timestamp.pdf');
     await file.writeAsBytes(pdfBytes);

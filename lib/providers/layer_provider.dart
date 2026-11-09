@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/layer_model.dart';
@@ -114,7 +113,8 @@ class LayerNotifier extends StateNotifier<LayerState> {
   void removeLayer(String id) {
     if (state.layers.length <= 1) return; // Keep at least 1 layer
     final newLayers = state.layers.where((l) => l.id != id).toList();
-    final newActiveId = state.activeLayerId == id
+    final newActiveId = (state.activeLayerId == id ||
+            !newLayers.any((l) => l.id == state.activeLayerId))
         ? newLayers.first.id
         : state.activeLayerId;
     state = state.copyWith(layers: newLayers, activeLayerId: newActiveId);

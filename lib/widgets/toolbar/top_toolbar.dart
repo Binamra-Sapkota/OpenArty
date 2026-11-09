@@ -273,9 +273,13 @@ class TopToolbar extends ConsumerWidget {
       if (file != null) {
         final bytes = await file.readAsBytes();
         ref.read(layerProvider.notifier).addImageLayer(bytes, name: file.name);
+        ref.read(canvasProvider.notifier).setTool(DrawingTool.transform);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Imported image as a new layer')),
+            const SnackBar(
+              content: Text('Imported image as new layer! Drag to move or scale, tap Done when finished.'),
+              duration: Duration(seconds: 4),
+            ),
           );
         }
       }
@@ -536,6 +540,20 @@ class TopToolbar extends ConsumerWidget {
                 subtitle: 'Lossless raster with transparent background',
                 icon: Icons.image,
                 iconColor: const Color(0xFF6C63FF),
+                onChooseLocation: () {
+                  Navigator.of(ctx).pop();
+                  _showDestinationPicker(
+                    context: context,
+                    formatName: 'PNG',
+                    onSaveToFolder: (folder) =>
+                        ImageUtils.exportAsPng(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenCreate'),
+                    onShare: () async {
+                      final path = await ImageUtils.exportAsPng(image, 'Artwork');
+                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                      return path;
+                    },
+                  );
+                },
                 onSave: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsPng(image, 'Artwork');
@@ -561,6 +579,20 @@ class TopToolbar extends ConsumerWidget {
                 subtitle: 'Compressed photographic format (high quality 92%)',
                 icon: Icons.photo,
                 iconColor: Colors.amber,
+                onChooseLocation: () {
+                  Navigator.of(ctx).pop();
+                  _showDestinationPicker(
+                    context: context,
+                    formatName: 'JPEG',
+                    onSaveToFolder: (folder) =>
+                        ImageUtils.exportAsJpeg(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenCreate'),
+                    onShare: () async {
+                      final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
+                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                      return path;
+                    },
+                  );
+                },
                 onSave: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
@@ -586,6 +618,34 @@ class TopToolbar extends ConsumerWidget {
                 subtitle: 'Scalable vector strokes for Illustrator & Inkscape',
                 icon: Icons.polyline,
                 iconColor: const Color(0xFF00E5FF),
+                onChooseLocation: () {
+                  Navigator.of(ctx).pop();
+                  _showDestinationPicker(
+                    context: context,
+                    formatName: 'SVG',
+                    onSaveToFolder: (folder) => ImageUtils.exportAsSvg(
+                      width: width,
+                      height: height,
+                      layers: layerState.layers,
+                      committedStrokes: canvasState.committedStrokes,
+                      projectName: 'Artwork',
+                      backgroundColor: canvasState.canvas.backgroundColor,
+                      customDir: '/storage/emulated/0/$folder/OpenCreate',
+                    ),
+                    onShare: () async {
+                      final path = await ImageUtils.exportAsSvg(
+                        width: width,
+                        height: height,
+                        layers: layerState.layers,
+                        committedStrokes: canvasState.committedStrokes,
+                        projectName: 'Artwork',
+                        backgroundColor: canvasState.canvas.backgroundColor,
+                      );
+                      await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenCreate');
+                      return path;
+                    },
+                  );
+                },
                 onSave: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsSvg(
@@ -625,6 +685,30 @@ class TopToolbar extends ConsumerWidget {
                 subtitle: 'Print-ready portable document at full canvas resolution',
                 icon: Icons.picture_as_pdf,
                 iconColor: Colors.redAccent,
+                onChooseLocation: () {
+                  Navigator.of(ctx).pop();
+                  _showDestinationPicker(
+                    context: context,
+                    formatName: 'PDF',
+                    onSaveToFolder: (folder) => ImageUtils.exportAsPdf(
+                      image,
+                      'Artwork',
+                      width: width,
+                      height: height,
+                      customDir: '/storage/emulated/0/$folder/OpenCreate',
+                    ),
+                    onShare: () async {
+                      final path = await ImageUtils.exportAsPdf(
+                        image,
+                        'Artwork',
+                        width: width,
+                        height: height,
+                      );
+                      await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenCreate');
+                      return path;
+                    },
+                  );
+                },
                 onSave: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsPdf(
@@ -663,6 +747,7 @@ class TopToolbar extends ConsumerWidget {
     required String subtitle,
     required IconData icon,
     required Color iconColor,
+    required VoidCallback onChooseLocation,
     required VoidCallback onSave,
     required VoidCallback onShare,
   }) {
@@ -704,7 +789,13 @@ class TopToolbar extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
+          // Choose Location folder button
+          IconButton(
+            icon: const Icon(Icons.folder_open, color: Colors.tealAccent, size: 20),
+            tooltip: 'Choose Folder to Save',
+            onPressed: onChooseLocation,
+          ),
           // Save button
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white70, size: 20),
@@ -718,6 +809,93 @@ class TopToolbar extends ConsumerWidget {
             onPressed: onShare,
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDestinationPicker({
+    required BuildContext context,
+    required String formatName,
+    required Future<String> Function(String folderName) onSaveToFolder,
+    required Future<String> Function() onShare,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF222222),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Save $formatName To...',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFF6C63FF)),
+                title: const Text('Pictures Folder', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Directly accessible in your phone gallery',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await onSaveToFolder('Pictures');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Saved to Pictures:\n$path')));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.tealAccent),
+                title: const Text('Downloads Folder', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Save to your phone Download directory',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await onSaveToFolder('Download');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Saved to Downloads:\n$path')));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_shared, color: Colors.amber),
+                title: const Text('Documents Folder', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Save to your phone Documents directory',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await onSaveToFolder('Documents');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Saved to Documents:\n$path')));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.purpleAccent),
+                title: const Text('Share / Save to Other Apps', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Open Android share sheet to save anywhere or send to apps',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  await onShare();
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

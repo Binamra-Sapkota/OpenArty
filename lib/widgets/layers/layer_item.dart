@@ -9,6 +9,7 @@ class LayerItem extends StatelessWidget {
   final VoidCallback onToggleLock;
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
+  final VoidCallback? onTransform;
   final ValueChanged<double> onOpacityChanged;
   final ValueChanged<LayerBlendMode> onBlendModeChanged;
 
@@ -21,6 +22,7 @@ class LayerItem extends StatelessWidget {
     required this.onToggleLock,
     required this.onDuplicate,
     required this.onDelete,
+    this.onTransform,
     required this.onOpacityChanged,
     required this.onBlendModeChanged,
   });
@@ -78,17 +80,40 @@ class LayerItem extends StatelessWidget {
                   icon: const Icon(Icons.more_vert, size: 18, color: Colors.white70),
                   color: const Color(0xFF2C2C2C),
                   onSelected: (val) {
+                    if (val == 'transform') onTransform?.call();
                     if (val == 'duplicate') onDuplicate();
                     if (val == 'delete') onDelete();
                   },
                   itemBuilder: (ctx) => [
                     const PopupMenuItem(
+                      value: 'transform',
+                      child: Row(
+                        children: [
+                          Icon(Icons.open_with, size: 18, color: Colors.white70),
+                          SizedBox(width: 8),
+                          Text('Transform / Resize', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
                       value: 'duplicate',
-                      child: Text('Duplicate Layer', style: TextStyle(color: Colors.white)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.copy, size: 18, color: Colors.white70),
+                          SizedBox(width: 8),
+                          Text('Duplicate Layer', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'delete',
-                      child: Text('Delete Layer', style: TextStyle(color: Colors.redAccent)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, size: 18, color: Colors.redAccent),
+                          SizedBox(width: 8),
+                          Text('Delete Layer', style: TextStyle(color: Colors.redAccent)),
+                        ],
+                      ),
                     ),
                   ],
                 ),

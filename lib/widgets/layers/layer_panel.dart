@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/layer_provider.dart';
+import '../../providers/canvas_provider.dart';
 import 'layer_item.dart';
 
 class LayerPanel extends ConsumerWidget {
@@ -72,11 +73,24 @@ class LayerPanel extends ConsumerWidget {
                 return LayerItem(
                   layer: layer,
                   isActive: isActive,
-                  onSelect: () => layerNotifier.setActiveLayer(layer.id),
+                  onSelect: () {
+                    layerNotifier.setActiveLayer(layer.id);
+                    ref.read(canvasProvider.notifier).setActiveLayer(layer.id);
+                  },
                   onToggleVisibility: () => layerNotifier.toggleVisibility(layer.id),
                   onToggleLock: () => layerNotifier.toggleLock(layer.id),
                   onDuplicate: () => layerNotifier.duplicateLayer(layer.id),
-                  onDelete: () => layerNotifier.removeLayer(layer.id),
+                  onDelete: () {
+                    layerNotifier.removeLayer(layer.id);
+                    final newActive = ref.read(layerProvider).activeLayerId;
+                    ref.read(canvasProvider.notifier).setActiveLayer(newActive);
+                  },
+                  onTransform: () {
+                    layerNotifier.setActiveLayer(layer.id);
+                    ref.read(canvasProvider.notifier).setActiveLayer(layer.id);
+                    ref.read(canvasProvider.notifier).setTool(DrawingTool.transform);
+                    onClose?.call();
+                  },
                   onOpacityChanged: (v) => layerNotifier.setOpacity(layer.id, v),
                   onBlendModeChanged: (mode) =>
                       layerNotifier.setBlendMode(layer.id, mode),

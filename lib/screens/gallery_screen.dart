@@ -33,12 +33,15 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   Future<void> _checkStoragePermission() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
-    final storageStatus = await Permission.storage.status;
-    final photosStatus = await Permission.photos.status;
+    final statuses = await [
+      Permission.storage,
+      Permission.photos,
+    ].request();
 
-    if (storageStatus.isGranted || photosStatus.isGranted) {
-      return;
-    }
+    final isGranted = statuses[Permission.storage]?.isGranted == true ||
+        statuses[Permission.photos]?.isGranted == true;
+
+    if (isGranted) return;
 
     if (!mounted) return;
 
@@ -117,7 +120,12 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     setState(() => _isLoaded = true);
   }
 
-  void _createNewArtwork({int width = 1080, int height = 1080, String name = 'Untitled'}) {
+  void _createNewArtwork({
+    int width = 1080,
+    int height = 1080,
+    int dpi = 150,
+    String name = 'Untitled',
+  }) {
     final newProject = ProjectModel(
       id: _uuid.v4(),
       name: name,
@@ -125,7 +133,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       modifiedAt: DateTime.now(),
       canvasWidth: width,
       canvasHeight: height,
-      dpi: 150,
+      dpi: dpi,
       layerCount: 1,
     );
 
@@ -138,7 +146,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
           initialCanvas: CanvasModel(
             width: width,
             height: height,
-            dpi: 150,
+            dpi: dpi,
           ),
         ),
       ),
@@ -146,90 +154,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   }
 
   void _showNewCanvasDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF222222),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'New Canvas',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Custom Canvas Dimensions
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.tune, color: Color(0xFF6C63FF), size: 24),
-                ),
-                title: const Text('Custom Dimensions',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Specify exact width, height, and DPI',
-                    style: TextStyle(color: Colors.white54)),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _showCustomCanvasDialog();
-                },
-              ),
-              const Divider(color: Colors.white12, height: 16),
-              ListTile(
-                leading: const Icon(Icons.crop_square, color: Color(0xFF6C63FF)),
-                title: const Text('Square (1080 × 1080)', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Perfect for avatars and social media', style: TextStyle(color: Colors.white54)),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _createNewArtwork(width: 1080, height: 1080, name: 'Square Artwork');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.phone_android, color: Colors.tealAccent),
-                title: const Text('Phone Portrait (1080 × 1920)', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Full HD mobile wallpaper', style: TextStyle(color: Colors.white54)),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _createNewArtwork(width: 1080, height: 1920, name: 'Phone Portrait');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.tv, color: Colors.amber),
-                title: const Text('Full HD Landscape (1920 × 1080)', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Standard desktop wallpaper', style: TextStyle(color: Colors.white54)),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _createNewArtwork(width: 1920, height: 1080, name: 'Landscape Artwork');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.high_quality, color: Colors.purpleAccent),
-                title: const Text('4K Ultra HD (3840 × 2160)', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('High resolution digital painting', style: TextStyle(color: Colors.white54)),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _createNewArtwork(width: 3840, height: 2160, name: '4K Artwork');
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    _showCustomCanvasDialog();
   }
 
   void _showCustomCanvasDialog() {
@@ -243,7 +168,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF282828),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Create Custom Canvas',
+        title: const Text('New Canvas / Dimensions',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: SingleChildScrollView(
           child: Column(
@@ -311,6 +236,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
               // Preset chips
               Wrap(
                 spacing: 8,
+                runSpacing: 6,
                 children: [
                   ActionChip(
                     label: const Text('1:1 Square', style: TextStyle(fontSize: 11)),
@@ -340,6 +266,21 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                       heightController.text = '1200';
                     },
                   ),
+                  ActionChip(
+                    label: const Text('4K UHD', style: TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      widthController.text = '3840';
+                      heightController.text = '2160';
+                    },
+                  ),
+                  ActionChip(
+                    label: const Text('A4 Print', style: TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      widthController.text = '2480';
+                      heightController.text = '3508';
+                      dpiController.text = '300';
+                    },
+                  ),
                 ],
               ),
             ],
@@ -359,11 +300,17 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             onPressed: () {
               final w = int.tryParse(widthController.text) ?? 1080;
               final h = int.tryParse(heightController.text) ?? 1080;
+              final dpi = int.tryParse(dpiController.text) ?? 150;
               final name = nameController.text.trim().isEmpty
                   ? 'Custom Artwork'
                   : nameController.text.trim();
               Navigator.of(ctx).pop();
-              _createNewArtwork(width: w.clamp(100, 8192), height: h.clamp(100, 8192), name: name);
+              _createNewArtwork(
+                width: w.clamp(100, 8192),
+                height: h.clamp(100, 8192),
+                dpi: dpi,
+                name: name,
+              );
             },
           ),
         ],
@@ -440,11 +387,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                             ),
                             const SizedBox(height: 20),
                             ElevatedButton.icon(
-                              onPressed: () => _createNewArtwork(
-                                width: 1080,
-                                height: 1080,
-                                name: 'New Artwork',
-                              ),
+                              onPressed: _showCustomCanvasDialog,
                               icon: const Icon(Icons.add),
                               label: const Text('Start Drawing'),
                             ),

@@ -25,8 +25,10 @@ class _QuickSlidersState extends ConsumerState<QuickSliders> {
     final currentColor = ref.watch(drawingColorProvider);
     final media = MediaQuery.of(context).size;
 
-    final clampedX = _position.dx.clamp(4.0, math.max(4.0, media.width - 50.0));
-    final clampedY = _position.dy.clamp(10.0, math.max(10.0, media.height - 310.0));
+    final clampedX =
+        _position.dx.clamp(4.0, math.max(4.0, media.width - 50.0)).toDouble();
+    final clampedY =
+        _position.dy.clamp(10.0, math.max(10.0, media.height - 310.0)).toDouble();
 
     final isNearRight = clampedX > media.width / 2;
 
@@ -196,6 +198,27 @@ class _QuickSlidersState extends ConsumerState<QuickSliders> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 6),
+
+                // 4. Bottom Move Grip Handle
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: (details) {
+                    setState(() {
+                      _position += details.delta;
+                    });
+                  },
+                  child: Container(
+                    height: 22,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.drag_handle,
+                      size: 16,
+                      color: Colors.white70,
                     ),
                   ),
                 ),

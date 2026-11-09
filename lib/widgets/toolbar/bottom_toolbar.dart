@@ -193,7 +193,17 @@ class BottomToolbar extends ConsumerWidget {
                 icon: Icons.title,
                 label: 'Text',
                 isActive: activeTool == DrawingTool.text,
-                onTap: () => _showTextInputDialog(context, ref),
+                onTap: () {
+                  canvasNotifier.setTool(DrawingTool.text);
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Tap anywhere on canvas to place or edit text'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                onLongPress: () => _showTextInputDialog(context, ref),
               ),
 
               // 9. Gradient Tool
@@ -212,20 +222,20 @@ class BottomToolbar extends ConsumerWidget {
                   canvasNotifier.setTool(DrawingTool.gradient);
                 },
                 itemBuilder: (ctx) => [
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: false,
                     child: Row(
-                      children: const [
+                      children: [
                         Icon(Icons.linear_scale, color: Colors.white70, size: 20),
                         SizedBox(width: 8),
                         Text('Linear Gradient', style: TextStyle(color: Colors.white)),
                       ],
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: true,
                     child: Row(
-                      children: const [
+                      children: [
                         Icon(Icons.blur_circular, color: Colors.white70, size: 20),
                         SizedBox(width: 8),
                         Text('Radial Gradient', style: TextStyle(color: Colors.white)),
@@ -245,7 +255,17 @@ class BottomToolbar extends ConsumerWidget {
                 },
               ),
 
-              // 11. Selection Tool
+              // 11. Transform / Move Tool
+              _ToolIcon(
+                icon: Icons.open_with,
+                label: 'Transform',
+                isActive: activeTool == DrawingTool.transform,
+                onTap: () {
+                  canvasNotifier.setTool(DrawingTool.transform);
+                },
+              ),
+
+              // 12. Selection Tool
               _ToolIcon(
                 icon: Icons.crop_free,
                 label: 'Select',

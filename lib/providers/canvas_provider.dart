@@ -174,6 +174,7 @@ class CanvasState {
     double? shapeStrokeWidth,
     bool? isRadialGradient,
     ReferenceImageData? referenceImage,
+    bool clearReferenceImage = false,
     bool? palmRejectionEnabled,
     bool? stylusOnlyMode,
   }) {
@@ -201,7 +202,7 @@ class CanvasState {
       isShapeFilled: isShapeFilled ?? this.isShapeFilled,
       shapeStrokeWidth: shapeStrokeWidth ?? this.shapeStrokeWidth,
       isRadialGradient: isRadialGradient ?? this.isRadialGradient,
-      referenceImage: referenceImage ?? this.referenceImage,
+      referenceImage: clearReferenceImage ? null : (referenceImage ?? this.referenceImage),
       palmRejectionEnabled: palmRejectionEnabled ?? this.palmRejectionEnabled,
       stylusOnlyMode: stylusOnlyMode ?? this.stylusOnlyMode,
     );
@@ -348,13 +349,17 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void clearReferenceImage() {
-    state = state.copyWith(referenceImage: null);
+    state = state.copyWith(clearReferenceImage: true);
   }
 
   // --- Drawing Strokes ---
 
   void beginStroke(
-      Offset position, BrushModel brush, Color color, double pressure) {
+      Offset position, BrushModel brush, Color color, double pressure,
+      {String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
     final point = DrawPoint(
       position: position,
       pressure: pressure,
@@ -369,12 +374,13 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       brushId: brush.id,
       brushSize: brush.size,
       brushOpacity: brush.opacity,
-      layerId: state.activeLayerId,
+      layerId: activeId,
       kind: StrokeKind.freehand,
     );
 
     state = state.copyWith(
       isDrawing: true,
+      activeLayerId: activeId,
       currentStrokes: [_currentStroke!],
     );
   }
@@ -406,7 +412,9 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   void endStroke() {
     if (!state.isDrawing || _currentStroke == null) return;
 
-    final layerId = state.activeLayerId;
+    final layerId = _currentStroke!.layerId.isNotEmpty
+        ? _currentStroke!.layerId
+        : state.activeLayerId;
     final existing = state.committedStrokes[layerId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
@@ -418,10 +426,9 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
     _currentStroke = null;
     _currentPoints = [];
-
     state = state.copyWith(
       isDrawing: false,
-      currentStrokes: [],
+      currentStrokes: const [],
       committedStrokes: newCommitted,
       undoStack: newUndoStack,
       redoStack: [],
@@ -438,11 +445,15 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     );
   }
 
-  bool fillShapeAt(Offset pos, Color color) {
-    final layerId = state.activeLayerId;
-    final existing = state.committedStrokes[layerId] ?? [];
+  bool fillShapeAt(Offset pos, Color color, {String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    final existing = state.committedStrokes[activeId] ?? [];
     for (int i = existing.length - 1; i >= 0; i--) {
       final stroke = existing[i];
+
+      // 1. Shapes (rect, circle, triangle, line)
       if (stroke.shapeStart != null && stroke.shapeEnd != null) {
         final rect = Rect.fromPoints(stroke.shapeStart!, stroke.shapeEnd!);
         if (stroke.kind == StrokeKind.rectangle ||
@@ -453,7 +464,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
             newStrokes[i] = updated;
             final newCommitted =
                 Map<String, List<DrawStroke>>.from(state.committedStrokes);
-            newCommitted[layerId] = newStrokes;
+            newCommitted[activeId] = newStrokes;
             state = state.copyWith(
               committedStrokes: newCommitted,
               undoStack: [...state.undoStack, existing],
@@ -475,7 +486,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
               newStrokes[i] = updated;
               final newCommitted =
                   Map<String, List<DrawStroke>>.from(state.committedStrokes);
-              newCommitted[layerId] = newStrokes;
+              newCommitted[activeId] = newStrokes;
               state = state.copyWith(
                 committedStrokes: newCommitted,
                 undoStack: [...state.undoStack, existing],
@@ -494,7 +505,62 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
             newStrokes[i] = updated;
             final newCommitted =
                 Map<String, List<DrawStroke>>.from(state.committedStrokes);
-            newCommitted[layerId] = newStrokes;
+            newCommitted[activeId] = newStrokes;
+            state = state.copyWith(
+              committedStrokes: newCommitted,
+              undoStack: [...state.undoStack, existing],
+              redoStack: [],
+            );
+            return true;
+          }
+        } else if (stroke.kind == StrokeKind.line) {
+          final dist = _distToSegment(pos, stroke.shapeStart!, stroke.shapeEnd!);
+          if (dist <= 20.0) {
+            final updated = stroke.copyWith(color: color);
+            final newStrokes = [...existing];
+            newStrokes[i] = updated;
+            final newCommitted =
+                Map<String, List<DrawStroke>>.from(state.committedStrokes);
+            newCommitted[activeId] = newStrokes;
+            state = state.copyWith(
+              committedStrokes: newCommitted,
+              undoStack: [...state.undoStack, existing],
+              redoStack: [],
+            );
+            return true;
+          }
+        }
+      }
+
+      // 2. Text items
+      if (stroke.kind == StrokeKind.text && stroke.shapeStart != null) {
+        final dist = (stroke.shapeStart! - pos).distance;
+        if (dist <= (stroke.fontSize ?? 28) + 15) {
+          final updated = stroke.copyWith(color: color);
+          final newStrokes = [...existing];
+          newStrokes[i] = updated;
+          final newCommitted =
+              Map<String, List<DrawStroke>>.from(state.committedStrokes);
+          newCommitted[activeId] = newStrokes;
+          state = state.copyWith(
+            committedStrokes: newCommitted,
+            undoStack: [...state.undoStack, existing],
+            redoStack: [],
+          );
+          return true;
+        }
+      }
+
+      // 3. Freehand stroke re-coloring
+      if (stroke.kind == StrokeKind.freehand) {
+        for (final pt in stroke.points) {
+          if ((pt.position - pos).distance <= stroke.brushSize + 12.0) {
+            final updated = stroke.copyWith(color: color);
+            final newStrokes = [...existing];
+            newStrokes[i] = updated;
+            final newCommitted =
+                Map<String, List<DrawStroke>>.from(state.committedStrokes);
+            newCommitted[activeId] = newStrokes;
             state = state.copyWith(
               committedStrokes: newCommitted,
               undoStack: [...state.undoStack, existing],
@@ -508,6 +574,14 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     return false;
   }
 
+  static double _distToSegment(Offset p, Offset v, Offset w) {
+    final l2 = (v.dx - w.dx) * (v.dx - w.dx) + (v.dy - w.dy) * (v.dy - w.dy);
+    if (l2 == 0) return (p - v).distance;
+    final t = (((p.dx - v.dx) * (w.dx - v.dx) + (p.dy - v.dy) * (w.dy - v.dy)) / l2).clamp(0.0, 1.0);
+    final proj = Offset(v.dx + t * (w.dx - v.dx), v.dy + t * (w.dy - v.dy));
+    return (p - proj).distance;
+  }
+
   static bool _pointInTriangle(Offset p, Offset p0, Offset p1, Offset p2) {
     final dX = p.dx - p2.dx;
     final dY = p.dy - p2.dy;
@@ -519,6 +593,85 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     final t = (p2.dy - p0.dy) * dX + (p0.dx - p2.dx) * dY;
     if (d > 0) return s >= 0 && t >= 0 && (s + t) <= d;
     return s <= 0 && t <= 0 && (s + t) >= d;
+  }
+
+  /// Find text stroke near the given position
+  int findTextStrokeAt(Offset pos, {String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    final existing = state.committedStrokes[activeId] ?? [];
+    for (int i = existing.length - 1; i >= 0; i--) {
+      final s = existing[i];
+      if (s.kind == StrokeKind.text && s.shapeStart != null) {
+        final dist = (s.shapeStart! - pos).distance;
+        final approxW = (s.text?.length ?? 1) * (s.fontSize ?? 28) * 0.7;
+        final approxH = (s.fontSize ?? 28) * 1.4;
+        final bounds = Rect.fromCenter(
+          center: s.shapeStart!,
+          width: approxW + 30,
+          height: approxH + 20,
+        );
+        if (bounds.contains(pos) || dist < 35) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  /// Update an existing text stroke
+  void updateTextStroke(
+    int index, {
+    String? text,
+    double? fontSize,
+    Color? color,
+    Offset? pos,
+    String? layerId,
+  }) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    final existing = state.committedStrokes[activeId] ?? [];
+    if (index < 0 || index >= existing.length) return;
+    final stroke = existing[index];
+    final updated = stroke.copyWith(
+      text: text ?? stroke.text,
+      fontSize: fontSize ?? stroke.fontSize,
+      brushSize: fontSize ?? stroke.brushSize,
+      color: color ?? stroke.color,
+      shapeStart: pos ?? stroke.shapeStart,
+      points: pos != null ? [DrawPoint(position: pos)] : stroke.points,
+    );
+    final newStrokes = [...existing];
+    newStrokes[index] = updated;
+    final newCommitted =
+        Map<String, List<DrawStroke>>.from(state.committedStrokes);
+    newCommitted[activeId] = newStrokes;
+    state = state.copyWith(
+      committedStrokes: newCommitted,
+      undoStack: [...state.undoStack, existing],
+      redoStack: [],
+    );
+  }
+
+  /// Delete a stroke by index
+  void deleteStroke(int index, {String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    final existing = state.committedStrokes[activeId] ?? [];
+    if (index < 0 || index >= existing.length) return;
+    final newStrokes = [...existing];
+    newStrokes.removeAt(index);
+    final newCommitted =
+        Map<String, List<DrawStroke>>.from(state.committedStrokes);
+    newCommitted[activeId] = newStrokes;
+    state = state.copyWith(
+      committedStrokes: newCommitted,
+      undoStack: [...state.undoStack, existing],
+      redoStack: [],
+    );
   }
 
   // --- Shapes, Text, Fill & Gradients ---
@@ -589,25 +742,27 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void commitText(String text, Offset pos, double size, Color color,
-      {bool bold = false, bool italic = false}) {
-    final layerId = state.activeLayerId;
+      {bool bold = false, bool italic = false, String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
     final stroke = DrawStroke(
       points: [DrawPoint(position: pos)],
       color: color,
       brushId: 'text',
       brushSize: size,
       brushOpacity: 1.0,
-      layerId: layerId,
+      layerId: activeId,
       kind: StrokeKind.text,
       text: text,
       fontSize: size,
       shapeStart: pos,
     );
 
-    final existing = state.committedStrokes[layerId] ?? [];
+    final existing = state.committedStrokes[activeId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
-    newCommitted[layerId] = [...existing, stroke];
+    newCommitted[activeId] = [...existing, stroke];
 
     final newUndoStack = [...state.undoStack, existing];
     state = state.copyWith(
@@ -617,22 +772,24 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     );
   }
 
-  void commitFill(Color color) {
-    final layerId = state.activeLayerId;
+  void commitFill(Color color, {String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
     final stroke = DrawStroke(
       points: const [],
       color: color,
       brushId: 'fill',
       brushSize: 1,
       brushOpacity: 1.0,
-      layerId: layerId,
+      layerId: activeId,
       kind: StrokeKind.fill,
     );
 
-    final existing = state.committedStrokes[layerId] ?? [];
+    final existing = state.committedStrokes[activeId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
-    newCommitted[layerId] = [...existing, stroke];
+    newCommitted[activeId] = [...existing, stroke];
 
     final newUndoStack = [...state.undoStack, existing];
     state = state.copyWith(
@@ -643,27 +800,33 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void commitGradient(Offset start, Offset end, Color color1, Color color2,
-      {bool isRadial = false}) {
-    final layerId = state.activeLayerId;
+      {bool isRadial = false, String? layerId}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    var finalEnd = end;
+    if ((finalEnd - start).distance < 10.0) {
+      finalEnd = start + const Offset(150, 150);
+    }
     final stroke = DrawStroke(
-      points: [DrawPoint(position: start), DrawPoint(position: end)],
+      points: [DrawPoint(position: start), DrawPoint(position: finalEnd)],
       color: color1,
       secondaryColor: color2,
       brushId: 'gradient',
       brushSize: 1,
       brushOpacity: 1.0,
-      layerId: layerId,
+      layerId: activeId,
       kind: isRadial
           ? StrokeKind.gradientRadial
           : StrokeKind.gradientLinear,
       shapeStart: start,
-      shapeEnd: end,
+      shapeEnd: finalEnd,
     );
 
-    final existing = state.committedStrokes[layerId] ?? [];
+    final existing = state.committedStrokes[activeId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
-    newCommitted[layerId] = [...existing, stroke];
+    newCommitted[activeId] = [...existing, stroke];
 
     final newUndoStack = [...state.undoStack, existing];
     state = state.copyWith(

@@ -231,22 +231,6 @@ class CanvasPainter extends CustomPainter {
     );
   }
 
-    final textSpan = TextSpan(
-      text: text,
-      style: TextStyle(
-        color: stroke.color,
-        fontSize: fontSize,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-    final textPainter = TextPainter(
-      text: textSpan,
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, pos);
-  }
-
   void _drawShape(Canvas canvas, DrawStroke stroke, Size size) {
     final start = stroke.shapeStart ?? Offset.zero;
     final end = stroke.shapeEnd ?? start;

@@ -82,10 +82,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
                 ),
                 Expanded(
                   child: Stack(
-                    children: const [
-                      DrawingCanvas(),
-                      QuickSliders(),
-                      ReferenceImageWidget(),
+                    children: [
+                      const DrawingCanvas(),
+                      const QuickSliders(),
+                      const ReferenceImageWidget(),
                     ],
                   ),
                 ),

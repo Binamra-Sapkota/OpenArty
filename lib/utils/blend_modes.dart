@@ -244,4 +244,38 @@ class DrawStroke {
     this.shapeStart,
     this.shapeEnd,
   });
+
+  DrawStroke copyWith({
+    List<DrawPoint>? points,
+    Color? color,
+    String? brushId,
+    double? brushSize,
+    double? brushOpacity,
+    String? layerId,
+    int? blendMode,
+    StrokeKind? kind,
+    bool? isFilled,
+    String? text,
+    double? fontSize,
+    Color? secondaryColor,
+    Offset? shapeStart,
+    Offset? shapeEnd,
+  }) {
+    return DrawStroke(
+      points: points ?? this.points,
+      color: color ?? this.color,
+      brushId: brushId ?? this.brushId,
+      brushSize: brushSize ?? this.brushSize,
+      brushOpacity: brushOpacity ?? this.brushOpacity,
+      layerId: layerId ?? this.layerId,
+      blendMode: blendMode ?? this.blendMode,
+      kind: kind ?? this.kind,
+      isFilled: isFilled ?? this.isFilled,
+      text: text ?? this.text,
+      fontSize: fontSize ?? this.fontSize,
+      secondaryColor: secondaryColor ?? this.secondaryColor,
+      shapeStart: shapeStart ?? this.shapeStart,
+      shapeEnd: shapeEnd ?? this.shapeEnd,
+    );
+  }
 }
