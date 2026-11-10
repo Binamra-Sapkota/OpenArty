@@ -224,6 +224,13 @@ enum StrokeKind {
   circle,
   ellipse,
   triangle,
+  star,
+  polygon,
+  diamond,
+  heart,
+  arrow,
+  speechBubble,
+  cloud,
   fill,
   floodFill,
   text,
@@ -249,6 +256,9 @@ class DrawStroke {
   final Offset? shapeEnd;
   final Uint8List? imageBytes;
   ui.Image? floodFillImage;
+  Path? _cachedPath;
+  Path? get cachedPath => _cachedPath;
+  set cachedPath(Path? p) => _cachedPath = p;
 
   DrawStroke({
     required this.points,

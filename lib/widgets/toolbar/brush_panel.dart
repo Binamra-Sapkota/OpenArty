@@ -159,6 +159,23 @@ class BrushPanel extends ConsumerWidget {
             max: 1.0,
             onChanged: (v) => brushNotifier.setStreamline(v),
           ),
+          const SizedBox(height: 4),
+          // Pressure dynamics toggle
+          Row(
+            children: [
+              const Icon(Icons.touch_app, size: 18, color: Colors.white70),
+              const SizedBox(width: 8),
+              const Text('Pressure Dynamics',
+                  style: TextStyle(fontSize: 12, color: Colors.white70)),
+              const Spacer(),
+              Switch(
+                value: activeBrush.pressureSensitive,
+                onChanged: (v) => brushNotifier.setPressureSensitive(v),
+                activeThumbColor: Theme.of(context).colorScheme.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
         ],
       ),
     ),

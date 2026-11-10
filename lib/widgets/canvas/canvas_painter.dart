@@ -206,6 +206,13 @@ class CanvasPainter extends CustomPainter {
       case StrokeKind.circle:
       case StrokeKind.ellipse:
       case StrokeKind.triangle:
+      case StrokeKind.star:
+      case StrokeKind.polygon:
+      case StrokeKind.diamond:
+      case StrokeKind.heart:
+      case StrokeKind.arrow:
+      case StrokeKind.speechBubble:
+      case StrokeKind.cloud:
         _drawShape(canvas, stroke, size);
         break;
       case StrokeKind.text:
@@ -332,6 +339,87 @@ class CanvasPainter extends CustomPainter {
         path.lineTo(start.dx, end.dy);
         path.close();
         break;
+      case StrokeKind.star:
+        final c = rect.center;
+        final rOuter = math.max(4.0, math.min(rect.width.abs(), rect.height.abs()) / 2);
+        final rInner = rOuter * 0.42;
+        for (int i = 0; i < 10; i++) {
+          final angle = (i * math.pi / 5) - math.pi / 2;
+          final r = (i % 2 == 0) ? rOuter : rInner;
+          final pt = Offset(c.dx + r * math.cos(angle), c.dy + r * math.sin(angle));
+          if (i == 0) {
+            path.moveTo(pt.dx, pt.dy);
+          } else {
+            path.lineTo(pt.dx, pt.dy);
+          }
+        }
+        path.close();
+        break;
+      case StrokeKind.polygon:
+        final c = rect.center;
+        final r = math.max(4.0, math.min(rect.width.abs(), rect.height.abs()) / 2);
+        for (int i = 0; i < 6; i++) {
+          final angle = (i * math.pi / 3) - math.pi / 6;
+          final pt = Offset(c.dx + r * math.cos(angle), c.dy + r * math.sin(angle));
+          if (i == 0) {
+            path.moveTo(pt.dx, pt.dy);
+          } else {
+            path.lineTo(pt.dx, pt.dy);
+          }
+        }
+        path.close();
+        break;
+      case StrokeKind.diamond:
+        path.moveTo(rect.center.dx, rect.top);
+        path.lineTo(rect.right, rect.center.dy);
+        path.lineTo(rect.center.dx, rect.bottom);
+        path.lineTo(rect.left, rect.center.dy);
+        path.close();
+        break;
+      case StrokeKind.heart:
+        final w = rect.width.abs();
+        final h = rect.height.abs();
+        final l = rect.left;
+        final t = rect.top;
+        path.moveTo(l + w * 0.5, t + h * 0.28);
+        path.cubicTo(l + w * 0.15, t, l, t + h * 0.35, l + w * 0.5, t + h * 0.95);
+        path.moveTo(l + w * 0.5, t + h * 0.28);
+        path.cubicTo(l + w * 0.85, t, l + w, t + h * 0.35, l + w * 0.5, t + h * 0.95);
+        break;
+      case StrokeKind.arrow:
+        final w = rect.width.abs();
+        final h = rect.height.abs();
+        final l = rect.left;
+        final t = rect.top;
+        path.moveTo(l, t + h * 0.35);
+        path.lineTo(l + w * 0.6, t + h * 0.35);
+        path.lineTo(l + w * 0.6, t + h * 0.15);
+        path.lineTo(l + w, t + h * 0.5);
+        path.lineTo(l + w * 0.6, t + h * 0.85);
+        path.lineTo(l + w * 0.6, t + h * 0.65);
+        path.lineTo(l, t + h * 0.65);
+        path.close();
+        break;
+      case StrokeKind.speechBubble:
+        final mainRect = Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.78);
+        path.addRRect(RRect.fromRectAndRadius(mainRect, const Radius.circular(16)));
+        path.moveTo(rect.left + rect.width * 0.2, rect.top + rect.height * 0.78);
+        path.lineTo(rect.left + rect.width * 0.08, rect.bottom);
+        path.lineTo(rect.left + rect.width * 0.38, rect.top + rect.height * 0.78);
+        break;
+      case StrokeKind.cloud:
+        final w = rect.width.abs();
+        final h = rect.height.abs();
+        final l = rect.left;
+        final t = rect.top;
+        path.moveTo(l + w * 0.2, t + h * 0.7);
+        path.cubicTo(l, t + h * 0.7, l, t + h * 0.4, l + w * 0.25, t + h * 0.4);
+        path.cubicTo(l + w * 0.2, t + h * 0.15, l + w * 0.55, t + h * 0.1, l + w * 0.6, t + h * 0.35);
+        path.cubicTo(l + w * 0.7, t + h * 0.2, l + w, t + h * 0.25, l + w * 0.95, t + h * 0.55);
+        path.cubicTo(l + w, t + h * 0.75, l + w * 0.8, t + h * 0.85, l + w * 0.65, t + h * 0.75);
+        path.lineTo(l + w * 0.2, t + h * 0.75);
+        path.close();
+        break;
       default:
         break;
     }
@@ -370,7 +458,7 @@ class CanvasPainter extends CustomPainter {
     if (points.length == 1) {
       canvas.drawCircle(
         points.first.position,
-        stroke.brushSize / 2,
+        math.max(1.0, points.first.size / 2),
         Paint()
           ..color = isEraser
               ? Colors.transparent
@@ -378,6 +466,39 @@ class CanvasPainter extends CustomPainter {
           ..blendMode = isEraser ? BlendMode.clear : BlendMode.srcOver
           ..style = PaintingStyle.fill,
       );
+      return;
+    }
+
+    // Dynamic Pressure Sensitivity Check:
+    // If points have variable pressure/size (from stylus or touch velocity dynamics),
+    // render with smooth variable-width segments for responsive calligraphy and pressure taper
+    final hasVariablePressure = points.length > 2 &&
+        (points.first.size != points.last.size ||
+            points.any((p) => (p.size - stroke.brushSize).abs() > 0.8));
+
+    if (hasVariablePressure) {
+      for (int i = 0; i < points.length - 1; i++) {
+        final p0 = points[i];
+        final p1 = points[i + 1];
+        final segWidth = math.max(1.0, (p0.size + p1.size) / 2);
+        final segOpacity =
+            math.min(1.0, math.max(0.05, (p0.opacity + p1.opacity) / 2));
+
+        paint.strokeWidth = segWidth;
+        if (!isEraser) {
+          paint.color = stroke.color.withValues(alpha: segOpacity);
+        }
+        canvas.drawLine(p0.position, p1.position, paint);
+      }
+      return;
+    }
+
+    // Fast cached path rendering for uniform strokes
+    if (stroke.cachedPath != null) {
+      canvas.drawPath(stroke.cachedPath!, paint);
+      if (symmetryMode != SymmetryMode.none) {
+        _drawSymmetricPath(canvas, stroke.cachedPath!, paint);
+      }
       return;
     }
 
@@ -394,6 +515,8 @@ class CanvasPainter extends CustomPainter {
     }
 
     path.lineTo(points.last.position.dx, points.last.position.dy);
+    stroke.cachedPath = path;
+
     canvas.drawPath(path, paint);
 
     if (symmetryMode != SymmetryMode.none) {

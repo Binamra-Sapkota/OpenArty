@@ -179,6 +179,13 @@ class BottomToolbar extends ConsumerWidget {
                   _shapeItem(ShapeType.ellipse, 'Ellipse', Icons.brightness_1_outlined),
                   _shapeItem(ShapeType.line, 'Line', Icons.show_chart),
                   _shapeItem(ShapeType.triangle, 'Triangle', Icons.change_history),
+                  _shapeItem(ShapeType.star, 'Star', Icons.star_border),
+                  _shapeItem(ShapeType.polygon, 'Hexagon', Icons.hexagon_outlined),
+                  _shapeItem(ShapeType.diamond, 'Diamond', Icons.diamond_outlined),
+                  _shapeItem(ShapeType.heart, 'Heart', Icons.favorite_border),
+                  _shapeItem(ShapeType.arrow, 'Arrow', Icons.arrow_forward),
+                  _shapeItem(ShapeType.speechBubble, 'Speech Bubble', Icons.chat_bubble_outline),
+                  _shapeItem(ShapeType.cloud, 'Cloud', Icons.cloud_outlined),
                   const PopupMenuDivider(),
                   CheckedPopupMenuItem(
                     checked: canvasState.isShapeFilled,

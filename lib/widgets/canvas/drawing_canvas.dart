@@ -25,6 +25,10 @@ class DrawingCanvas extends ConsumerStatefulWidget {
 
 class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
   double _currentPressure = 1.0;
+  DateTime? _lastPointerTime;
+  Offset? _lastPointerCanvasPos;
+  double _simulatedPressure = 0.7;
+
   double _baseZoom = 1.0;
   Offset _basePan = Offset.zero;
   double _baseRotation = 0.0;
@@ -43,6 +47,49 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
   Offset? _lastDragPos;
   Offset? _gradientStart;
   Offset? _gradientCurrent;
+
+  double _resolvePressure(PointerEvent event, Offset canvasPos) {
+    final isStylus = event.kind == PointerDeviceKind.stylus ||
+        event.kind == PointerDeviceKind.invertedStylus;
+
+    // 1. Hardware Stylus Pressure
+    if (isStylus &&
+        event.pressureMin < event.pressureMax &&
+        event.pressure > 0.0) {
+      final range = event.pressureMax - event.pressureMin;
+      final normalized = range > 0
+          ? ((event.pressure - event.pressureMin) / range)
+          : event.pressure;
+      _simulatedPressure = normalized.clamp(0.05, 1.0);
+      return _simulatedPressure;
+    }
+
+    // Direct hardware pressure if reported
+    if (event.pressure > 0.0 && event.pressure != 1.0) {
+      _simulatedPressure = event.pressure.clamp(0.05, 1.0);
+      return _simulatedPressure;
+    }
+
+    // 2. Velocity-based dynamics simulation for touch/finger or non-pressure styluses
+    final now = DateTime.now();
+    if (_lastPointerTime != null && _lastPointerCanvasPos != null) {
+      final dt = now.difference(_lastPointerTime!).inMicroseconds / 1000000.0;
+      if (dt > 0.002) {
+        final dist = (canvasPos - _lastPointerCanvasPos!).distance;
+        final speed = dist / dt; // px per second
+        // Fast speeds (flicks > 1200 px/s) taper to 0.4; slow speeds (< 100 px/s) yield 1.0
+        final factor = (1.0 - (speed / 1800.0)).clamp(0.35, 1.0);
+        // Exponential smoothing filter to prevent jitter
+        _simulatedPressure = (_simulatedPressure * 0.65) + (factor * 0.35);
+      }
+    } else {
+      _simulatedPressure = 0.65; // Natural tapered entry
+    }
+
+    _lastPointerTime = now;
+    _lastPointerCanvasPos = canvasPos;
+    return _simulatedPressure.clamp(0.1, 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,8 +186,6 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
                   event.kind == PointerDeviceKind.invertedStylus;
               if (canvasState.stylusOnlyMode && !isStylus) return;
 
-              _currentPressure = event.pressure > 0.0 ? event.pressure : 1.0;
-
               final localPos = _screenToCanvas(
                 event.localPosition,
                 canvasState,
@@ -148,6 +193,7 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               );
               if (localPos == null) return;
               _lastDragPos = localPos;
+              _currentPressure = _resolvePressure(event, localPos);
 
               final canvasNotifier = ref.read(canvasProvider.notifier);
               final activeTool = canvasState.activeTool;
@@ -257,14 +303,13 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
                   event.kind == PointerDeviceKind.invertedStylus;
               if (canvasState.stylusOnlyMode && !isStylus) return;
 
-              _currentPressure = event.pressure > 0.0 ? event.pressure : 1.0;
-
               final localPos = _screenToCanvas(
                 event.localPosition,
                 canvasState,
                 constraints,
               );
               if (localPos == null) return;
+              _currentPressure = _resolvePressure(event, localPos);
 
               final activeTool = canvasState.activeTool;
               final canvasNotifier = ref.read(canvasProvider.notifier);
@@ -328,6 +373,9 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
             onPointerUp: (event) {
               _isScalingCorner = false;
               _initialTouchDist = 0.0;
+              _lastPointerTime = null;
+              _lastPointerCanvasPos = null;
+              _simulatedPressure = 0.7;
               _activePointers = math.max(0, _activePointers - 1);
               if (_activePointers == 0) {
                 _isGesturing = false;

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -104,6 +105,31 @@ class ImageUtils {
     Color? backgroundColor,
     String? customDir,
   }) async {
+    final svgContent = buildSvgContent(
+      width: width,
+      height: height,
+      layers: layers,
+      committedStrokes: committedStrokes,
+      backgroundColor: backgroundColor,
+    );
+
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${exportDir.path}/${projectName}_$timestamp.svg');
+    await file.writeAsString(svgContent);
+    return file.path;
+  }
+
+  /// Build SVG XML content string from layers and committed strokes
+  static String buildSvgContent({
+    required int width,
+    required int height,
+    required List<LayerModel> layers,
+    required Map<String, List<DrawStroke>> committedStrokes,
+    Color? backgroundColor,
+  }) {
     final sb = StringBuffer();
     sb.writeln('<?xml version="1.0" encoding="UTF-8"?>');
     sb.writeln(
@@ -197,6 +223,123 @@ class ImageUtils {
                 '    <polygon points="${top.dx.toStringAsFixed(1)},${top.dy.toStringAsFixed(1)} ${bl.dx.toStringAsFixed(1)},${bl.dy.toStringAsFixed(1)} ${br.dx.toStringAsFixed(1)},${br.dy.toStringAsFixed(1)}" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" opacity="${opacity.toStringAsFixed(2)}" />');
             break;
 
+          case StrokeKind.star:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final c = rect.center;
+            final rOuter = math.min(rect.width.abs(), rect.height.abs()) / 2;
+            final rInner = rOuter * 0.45;
+            final starPts = StringBuffer();
+            for (int i = 0; i < 10; i++) {
+              final r = i.isEven ? rOuter : rInner;
+              final angle = -math.pi / 2 + (i * math.pi / 5);
+              final px = (c.dx + r * math.cos(angle)).toStringAsFixed(1);
+              final py = (c.dy + r * math.sin(angle)).toStringAsFixed(1);
+              starPts.write('$px,$py ');
+            }
+            sb.writeln(
+                '    <polygon points="${starPts.toString().trim()}" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.polygon:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final c = rect.center;
+            final r = math.min(rect.width.abs(), rect.height.abs()) / 2;
+            final polyPts = StringBuffer();
+            for (int i = 0; i < 6; i++) {
+              final angle = (i * math.pi / 3) - math.pi / 6;
+              final px = (c.dx + r * math.cos(angle)).toStringAsFixed(1);
+              final py = (c.dy + r * math.sin(angle)).toStringAsFixed(1);
+              polyPts.write('$px,$py ');
+            }
+            sb.writeln(
+                '    <polygon points="${polyPts.toString().trim()}" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.diamond:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            sb.writeln(
+                '    <polygon points="${rect.center.dx.toStringAsFixed(1)},${rect.top.toStringAsFixed(1)} ${rect.right.toStringAsFixed(1)},${rect.center.dy.toStringAsFixed(1)} ${rect.center.dx.toStringAsFixed(1)},${rect.bottom.toStringAsFixed(1)} ${rect.left.toStringAsFixed(1)},${rect.center.dy.toStringAsFixed(1)}" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.heart:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final w = rect.width.abs();
+            final h = rect.height.abs();
+            final l = rect.left;
+            final t = rect.top;
+            final heartPath =
+                'M ${(l + w * 0.5).toStringAsFixed(1)} ${(t + h * 0.28).toStringAsFixed(1)} '
+                'C ${(l + w * 0.15).toStringAsFixed(1)} ${t.toStringAsFixed(1)}, $l ${(t + h * 0.35).toStringAsFixed(1)}, ${(l + w * 0.5).toStringAsFixed(1)} ${(t + h * 0.95).toStringAsFixed(1)} '
+                'C ${(l + w).toStringAsFixed(1)} ${(t + h * 0.35).toStringAsFixed(1)}, ${(l + w * 0.85).toStringAsFixed(1)} ${t.toStringAsFixed(1)}, ${(l + w * 0.5).toStringAsFixed(1)} ${(t + h * 0.28).toStringAsFixed(1)} Z';
+            sb.writeln(
+                '    <path d="$heartPath" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.arrow:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final w = rect.width.abs();
+            final h = rect.height.abs();
+            final l = rect.left;
+            final t = rect.top;
+            final arrowPts =
+                '$l,${(t + h * 0.35).toStringAsFixed(1)} '
+                '${(l + w * 0.6).toStringAsFixed(1)},${(t + h * 0.35).toStringAsFixed(1)} '
+                '${(l + w * 0.6).toStringAsFixed(1)},${(t + h * 0.15).toStringAsFixed(1)} '
+                '${(l + w).toStringAsFixed(1)},${(t + h * 0.5).toStringAsFixed(1)} '
+                '${(l + w * 0.6).toStringAsFixed(1)},${(t + h * 0.85).toStringAsFixed(1)} '
+                '${(l + w * 0.6).toStringAsFixed(1)},${(t + h * 0.65).toStringAsFixed(1)} '
+                '$l,${(t + h * 0.65).toStringAsFixed(1)}';
+            sb.writeln(
+                '    <polygon points="$arrowPts" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.speechBubble:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final mw = rect.width.abs();
+            final mh = rect.height.abs() * 0.78;
+            final l = rect.left;
+            final t = rect.top;
+            sb.writeln(
+                '    <rect x="${l.toStringAsFixed(1)}" y="${t.toStringAsFixed(1)}" width="${mw.toStringAsFixed(1)}" height="${mh.toStringAsFixed(1)}" rx="16" ry="16" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" opacity="${opacity.toStringAsFixed(2)}" />');
+            final tailPts =
+                '${(l + mw * 0.2).toStringAsFixed(1)},${(t + mh).toStringAsFixed(1)} '
+                '${(l + mw * 0.08).toStringAsFixed(1)},${rect.bottom.toStringAsFixed(1)} '
+                '${(l + mw * 0.38).toStringAsFixed(1)},${(t + mh).toStringAsFixed(1)}';
+            sb.writeln(
+                '    <polygon points="$tailPts" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
+          case StrokeKind.cloud:
+            if (stroke.points.length < 2) break;
+            final rect = Rect.fromPoints(
+                stroke.points.first.position, stroke.points.last.position);
+            final w = rect.width.abs();
+            final h = rect.height.abs();
+            final l = rect.left;
+            final t = rect.top;
+            final cloudPath =
+                'M ${(l + w * 0.2).toStringAsFixed(1)} ${(t + h * 0.7).toStringAsFixed(1)} '
+                'C $l ${(t + h * 0.7).toStringAsFixed(1)}, $l ${(t + h * 0.4).toStringAsFixed(1)}, ${(l + w * 0.25).toStringAsFixed(1)} ${(t + h * 0.4).toStringAsFixed(1)} '
+                'C ${(l + w * 0.2).toStringAsFixed(1)} ${(t + h * 0.15).toStringAsFixed(1)}, ${(l + w * 0.55).toStringAsFixed(1)} ${(t + h * 0.1).toStringAsFixed(1)}, ${(l + w * 0.6).toStringAsFixed(1)} ${(t + h * 0.35).toStringAsFixed(1)} '
+                'C ${(l + w * 0.7).toStringAsFixed(1)} ${(t + h * 0.2).toStringAsFixed(1)}, ${(l + w).toStringAsFixed(1)} ${(t + h * 0.25).toStringAsFixed(1)}, ${(l + w * 0.95).toStringAsFixed(1)} ${(t + h * 0.55).toStringAsFixed(1)} '
+                'C ${(l + w).toStringAsFixed(1)} ${(t + h * 0.75).toStringAsFixed(1)}, ${(l + w * 0.8).toStringAsFixed(1)} ${(t + h * 0.85).toStringAsFixed(1)}, ${(l + w * 0.65).toStringAsFixed(1)} ${(t + h * 0.75).toStringAsFixed(1)} '
+                'L ${(l + w * 0.2).toStringAsFixed(1)} ${(t + h * 0.75).toStringAsFixed(1)} Z';
+            sb.writeln(
+                '    <path d="$cloudPath" fill="${stroke.isFilled ? strokeColor : 'none'}" stroke="$strokeColor" stroke-width="${stroke.brushSize.toStringAsFixed(1)}" stroke-linejoin="round" opacity="${opacity.toStringAsFixed(2)}" />');
+            break;
+
           case StrokeKind.text:
             if (stroke.points.isEmpty || stroke.text == null) break;
             final pos = stroke.points.first.position;
@@ -231,14 +374,7 @@ class ImageUtils {
     }
 
     sb.writeln('</svg>');
-
-    final Directory exportDir = customDir != null
-        ? Directory(customDir)
-        : await getExportDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File('${exportDir.path}/${projectName}_$timestamp.svg');
-    await file.writeAsString(sb.toString());
-    return file.path;
+    return sb.toString();
   }
 
   /// Export artwork as PDF document

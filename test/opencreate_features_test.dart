@@ -267,4 +267,87 @@ void main() {
       expect(container.read(canvasProvider).committedStrokes[textLayerId]!.length, 1);
     });
   });
+
+  group('Zero-Lag Stroke & Pressure Dynamics Tests', () {
+    test('continueStroke drops redundant sub-pixel movements to eliminate lag', () {
+      final container = ProviderContainer();
+      final canvasNotifier = container.read(canvasProvider.notifier);
+      final layerNotifier = container.read(layerProvider.notifier);
+      final brush = container.read(activeBrushProvider);
+
+      layerNotifier.addLayer(name: 'Stroke Test Layer');
+      final activeLayerId = container.read(layerProvider).activeLayerId;
+      canvasNotifier.initCanvas(const CanvasModel(width: 800, height: 600), activeLayerId);
+
+      // Begin stroke at (100, 100)
+      canvasNotifier.beginStroke(
+        const Offset(100, 100),
+        brush,
+        Colors.black,
+        0.5,
+        layerId: activeLayerId,
+      );
+
+      // Micro movement (< 1.5px) — should NOT add redundant point
+      canvasNotifier.continueStroke(const Offset(100.3, 100.4), brush, 0.5);
+      expect(container.read(canvasProvider).currentStrokes.first.points.length, 1);
+
+      // Distinct movement (> 1.5px) — should be added
+      canvasNotifier.continueStroke(const Offset(110.0, 105.0), brush, 0.8);
+      expect(container.read(canvasProvider).currentStrokes.first.points.length, 2);
+
+      // Check dynamic pressure scaling
+      final pt2 = container.read(canvasProvider).currentStrokes.first.points.last;
+      expect(pt2.pressure, 0.8);
+      expect(pt2.size, brush.size * (0.25 + 0.75 * 0.8));
+
+      canvasNotifier.endStroke();
+      final committed = container.read(canvasProvider).committedStrokes[activeLayerId]!;
+      expect(committed.length, 1);
+      expect(committed.first.points.length, 2);
+    });
+  });
+
+  group('New Vector Shapes and SVG Export Tests', () {
+    test('All new vector shapes commit and export cleanly to SVG', () {
+      final container = ProviderContainer();
+      final canvasNotifier = container.read(canvasProvider.notifier);
+      final layerNotifier = container.read(layerProvider.notifier);
+
+      layerNotifier.addLayer(name: 'Shapes Layer');
+      final activeLayerId = container.read(layerProvider).activeLayerId;
+      canvasNotifier.initCanvas(const CanvasModel(width: 1000, height: 1000), activeLayerId);
+
+      final testShapes = [
+        ShapeType.star,
+        ShapeType.polygon,
+        ShapeType.diamond,
+        ShapeType.heart,
+        ShapeType.arrow,
+        ShapeType.speechBubble,
+        ShapeType.cloud,
+      ];
+
+      for (final s in testShapes) {
+        canvasNotifier.setShapeType(s);
+        canvasNotifier.beginShape(const Offset(50, 50), Colors.purple, 4.0, true);
+        canvasNotifier.updateShape(const Offset(250, 250));
+        canvasNotifier.commitShape();
+      }
+
+      final strokes = container.read(canvasProvider).committedStrokes[activeLayerId]!;
+      expect(strokes.length, testShapes.length);
+
+      final svg = ImageUtils.buildSvgContent(
+        layers: container.read(layerProvider).layers,
+        committedStrokes: container.read(canvasProvider).committedStrokes,
+        width: 1000,
+        height: 1000,
+      );
+
+      expect(svg.contains('<polygon points='), true);
+      expect(svg.contains('<path d='), true);
+      expect(svg.contains('<rect x='), true);
+    });
+  });
 }

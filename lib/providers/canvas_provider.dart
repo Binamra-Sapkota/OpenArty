@@ -30,6 +30,13 @@ enum ShapeType {
   circle,
   ellipse,
   triangle,
+  star,
+  polygon,
+  diamond,
+  heart,
+  arrow,
+  speechBubble,
+  cloud,
 }
 
 enum SelectionShape { rectangle, ellipse, lasso, automatic }
@@ -441,11 +448,18 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       Offset position, BrushModel brush, Color color, double pressure,
       {String? layerId}) {
     final activeId = _resolveActiveLayerId(layerId);
+    final effectivePressure = brush.pressureSensitive ? pressure : 1.0;
+    final pointSize = brush.size *
+        (brush.pressureSensitive ? (0.25 + 0.75 * effectivePressure) : 1.0);
+    final pointOpacity = (brush.opacity *
+            (brush.pressureSensitive ? (0.4 + 0.6 * effectivePressure) : 1.0))
+        .clamp(0.05, 1.0);
+
     final point = DrawPoint(
       position: position,
-      pressure: pressure,
-      size: brush.size,
-      opacity: brush.opacity,
+      pressure: effectivePressure,
+      size: pointSize,
+      opacity: pointOpacity,
     );
 
     _currentPoints = [point];
@@ -469,23 +483,29 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   void continueStroke(Offset position, BrushModel brush, double pressure) {
     if (!state.isDrawing || _currentStroke == null) return;
 
+    // Minimum distance check: prevents lag from thousands of micro sub-pixel events
+    if (_currentPoints.isNotEmpty) {
+      final lastPos = _currentPoints.last.position;
+      final dist = (position - lastPos).distance;
+      if (dist < 1.5) return;
+    }
+
+    final effectivePressure = brush.pressureSensitive ? pressure : 1.0;
+    final pointSize = brush.size *
+        (brush.pressureSensitive ? (0.25 + 0.75 * effectivePressure) : 1.0);
+    final pointOpacity = (brush.opacity *
+            (brush.pressureSensitive ? (0.4 + 0.6 * effectivePressure) : 1.0))
+        .clamp(0.05, 1.0);
+
     final point = DrawPoint(
       position: position,
-      pressure: pressure,
-      size: brush.size * pressure,
-      opacity: brush.opacity * pressure,
+      pressure: effectivePressure,
+      size: pointSize,
+      opacity: pointOpacity,
     );
 
-    _currentPoints = [..._currentPoints, point];
-    _currentStroke = DrawStroke(
-      points: _currentPoints,
-      color: _currentStroke!.color,
-      brushId: _currentStroke!.brushId,
-      brushSize: _currentStroke!.brushSize,
-      brushOpacity: _currentStroke!.brushOpacity,
-      layerId: _currentStroke!.layerId,
-      kind: StrokeKind.freehand,
-    );
+    _currentPoints.add(point);
+    _currentStroke = _currentStroke!.copyWith(points: _currentPoints);
 
     state = state.copyWith(currentStrokes: [_currentStroke!]);
   }
@@ -501,7 +521,13 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     final existing = state.committedStrokes[layerId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
-    newCommitted[layerId] = [...existing, _currentStroke!];
+
+    final finalStroke = _currentStroke!.copyWith(
+      points: _currentPoints.isNotEmpty
+          ? List<DrawPoint>.from(_currentPoints)
+          : _currentStroke!.points,
+    );
+    newCommitted[layerId] = [...existing, finalStroke];
 
     // Push to undo stack
     final newUndoStack = [...state.undoStack, existing];
@@ -774,6 +800,27 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
         break;
       case ShapeType.triangle:
         kind = StrokeKind.triangle;
+        break;
+      case ShapeType.star:
+        kind = StrokeKind.star;
+        break;
+      case ShapeType.polygon:
+        kind = StrokeKind.polygon;
+        break;
+      case ShapeType.diamond:
+        kind = StrokeKind.diamond;
+        break;
+      case ShapeType.heart:
+        kind = StrokeKind.heart;
+        break;
+      case ShapeType.arrow:
+        kind = StrokeKind.arrow;
+        break;
+      case ShapeType.speechBubble:
+        kind = StrokeKind.speechBubble;
+        break;
+      case ShapeType.cloud:
+        kind = StrokeKind.cloud;
         break;
     }
 
