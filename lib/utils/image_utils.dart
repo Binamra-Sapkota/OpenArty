@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../models/layer_model.dart';
+import '../models/history_model.dart';
 import 'blend_modes.dart';
 
 class ImageUtils {
@@ -532,6 +533,8 @@ class ImageUtils {
     required String activeLayerId,
     required int canvasWidth,
     required int canvasHeight,
+    List<CanvasHistoryEntry>? historyUndoStack,
+    List<CanvasHistoryEntry>? historyRedoStack,
   }) async {
     final file = await getProjectFile(projectId);
     final data = {
@@ -545,6 +548,8 @@ class ImageUtils {
         (key, strokes) =>
             MapEntry(key, strokes.map((s) => s.toJson()).toList()),
       ),
+      'undoStack': (historyUndoStack ?? []).map((e) => e.toJson()).toList(),
+      'redoStack': (historyRedoStack ?? []).map((e) => e.toJson()).toList(),
     };
     await file.writeAsString(jsonEncode(data));
   }

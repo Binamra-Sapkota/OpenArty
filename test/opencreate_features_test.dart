@@ -1,8 +1,14 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:opencreate/models/canvas_model.dart';
+import 'package:opencreate/models/history_model.dart';
 import 'package:opencreate/models/layer_model.dart';
+import 'package:opencreate/providers/brush_provider.dart';
+import 'package:opencreate/providers/canvas_provider.dart';
 import 'package:opencreate/providers/layer_provider.dart';
+import 'package:opencreate/utils/blend_modes.dart';
 import 'package:opencreate/utils/image_utils.dart';
 import 'package:image/image.dart' as img;
 
@@ -146,6 +152,119 @@ void main() {
       final p = decoded.getPixel(60, 40);
       expect(p.b, 128);
       expect(p.a, 255);
+    });
+  });
+
+  group('Unified History & Cross-Layer Undo/Redo Tests', () {
+    test('CanvasHistoryEntry JSON roundtrip preserves all layer and stroke data', () {
+      final entry = CanvasHistoryEntry(
+        committedStrokes: {
+          'layer-1': [
+            DrawStroke(
+              points: [DrawPoint(position: const Offset(10, 10))],
+              color: const Color(0xFFFF0000),
+              brushId: 'brush_standard',
+              brushSize: 5.0,
+              brushOpacity: 1.0,
+              layerId: 'layer-1',
+            ),
+          ],
+        },
+        layers: [
+          LayerModel(id: 'layer-1', name: 'Background Layer'),
+          LayerModel(
+            id: 'text-layer-1',
+            name: 'Text Note',
+            layerType: LayerType.text,
+            textContent: 'Hello World',
+          ),
+        ],
+        activeLayerId: 'text-layer-1',
+      );
+
+      final json = entry.toJson();
+      final restored = CanvasHistoryEntry.fromJson(json);
+
+      expect(restored.activeLayerId, 'text-layer-1');
+      expect(restored.layers.length, 2);
+      expect(restored.layers[1].textContent, 'Hello World');
+      expect(restored.committedStrokes['layer-1']!.length, 1);
+      expect(restored.committedStrokes['layer-1']!.first.color, const Color(0xFFFF0000));
+    });
+
+    test('Undo rewinds across stroke, new layer, text layer, and gradient', () {
+      final container = ProviderContainer();
+      final canvasNotifier = container.read(canvasProvider.notifier);
+      final layerNotifier = container.read(layerProvider.notifier);
+
+      final baseLayerId = container.read(layerProvider).activeLayerId;
+      canvasNotifier.initCanvas(const CanvasModel(), baseLayerId);
+
+      // 1. Draw a stroke on base layer
+      final brush = container.read(activeBrushProvider);
+      canvasNotifier.beginStroke(const Offset(50, 50), brush, Colors.red, 1.0);
+      canvasNotifier.endStroke();
+      expect(container.read(canvasProvider).committedStrokes[baseLayerId]!.length, 1);
+      expect(container.read(canvasProvider).canUndo, true);
+
+      // 2. Add another layer
+      layerNotifier.addLayer(name: 'Layer 2');
+      expect(container.read(layerProvider).layers.length, 2);
+      final layer2Id = container.read(layerProvider).activeLayerId;
+      expect(layer2Id, isNot(baseLayerId));
+
+      // 3. Add a text layer
+      layerNotifier.addTextLayer('Sample Text');
+      expect(container.read(layerProvider).layers.length, 3);
+      final textLayerId = container.read(layerProvider).activeLayerId;
+      expect(container.read(layerProvider).activeLayer!.isTextLayer, true);
+
+      // 4. Commit gradient
+      canvasNotifier.commitGradient(
+        const Offset(0, 0),
+        const Offset(200, 200),
+        Colors.blue,
+        Colors.purple,
+      );
+      expect(container.read(canvasProvider).committedStrokes[textLayerId]!.length, 1);
+
+      // --- Now test step-by-step UNDO ---
+      // Undo 1: Reverts gradient
+      canvasNotifier.undo();
+      expect(container.read(canvasProvider).committedStrokes[textLayerId] ?? [], isEmpty);
+
+      // Undo 2: Reverts text layer
+      canvasNotifier.undo();
+      expect(container.read(layerProvider).layers.any((l) => l.id == textLayerId), false);
+      expect(container.read(layerProvider).layers.length, 2);
+
+      // Undo 3: Reverts Layer 2
+      canvasNotifier.undo();
+      expect(container.read(layerProvider).layers.any((l) => l.id == layer2Id), false);
+      expect(container.read(layerProvider).layers.length, 1);
+      expect(container.read(layerProvider).activeLayerId, baseLayerId);
+
+      // Undo 4: Reverts stroke on base layer
+      canvasNotifier.undo();
+      expect(container.read(canvasProvider).committedStrokes[baseLayerId] ?? [], isEmpty);
+
+      // --- Now test REDO forward ---
+      // Redo 1: Stroke restored
+      canvasNotifier.redo();
+      expect(container.read(canvasProvider).committedStrokes[baseLayerId]!.length, 1);
+
+      // Redo 2: Layer 2 restored
+      canvasNotifier.redo();
+      expect(container.read(layerProvider).layers.length, 2);
+
+      // Redo 3: Text layer restored
+      canvasNotifier.redo();
+      expect(container.read(layerProvider).layers.length, 3);
+      expect(container.read(layerProvider).layers.any((l) => l.isTextLayer), true);
+
+      // Redo 4: Gradient restored
+      canvasNotifier.redo();
+      expect(container.read(canvasProvider).committedStrokes[textLayerId]!.length, 1);
     });
   });
 }

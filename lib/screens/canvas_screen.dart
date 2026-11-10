@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/canvas_model.dart';
+import '../models/history_model.dart';
 import '../models/project_model.dart';
 import '../models/layer_model.dart';
 import '../providers/canvas_provider.dart';
@@ -32,7 +33,8 @@ class CanvasScreen extends ConsumerStatefulWidget {
   ConsumerState<CanvasScreen> createState() => _CanvasScreenState();
 }
 
-class _CanvasScreenState extends ConsumerState<CanvasScreen> {
+class _CanvasScreenState extends ConsumerState<CanvasScreen>
+    with WidgetsBindingObserver {
   bool _isBrushPanelOpen = false;
   bool _isLayerPanelOpen = false;
   Timer? _autoSaveTimer;
@@ -41,6 +43,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadAndRestoreProject();
       _startAutoSaveTimer();
@@ -49,9 +52,19 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoSaveTimer?.cancel();
     _saveArtworkDirectly();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState == AppLifecycleState.paused ||
+        lifecycleState == AppLifecycleState.inactive ||
+        lifecycleState == AppLifecycleState.detached) {
+      _saveArtworkDirectly();
+    }
   }
 
   Future<void> _loadAndRestoreProject() async {
@@ -94,6 +107,20 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
         ref.read(layerProvider.notifier).setLayers(layers, activeLayerId);
         ref.read(canvasProvider.notifier).initCanvas(canvasModel, activeLayerId);
         ref.read(canvasProvider.notifier).setCommittedStrokes(committedStrokes);
+
+        // Restore complete history undo/redo stacks
+        final rawUndo = savedData['undoStack'] as List<dynamic>? ?? [];
+        final undoStack = rawUndo
+            .map((e) => CanvasHistoryEntry.fromJson(e as Map<String, dynamic>))
+            .toList();
+        final rawRedo = savedData['redoStack'] as List<dynamic>? ?? [];
+        final redoStack = rawRedo
+            .map((e) => CanvasHistoryEntry.fromJson(e as Map<String, dynamic>))
+            .toList();
+        ref.read(canvasProvider.notifier).setHistory(
+              undoStack: undoStack,
+              redoStack: redoStack,
+            );
 
         for (final l in layers) {
           if (l.pixelData != null) {
@@ -146,7 +173,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
         activeLayerId: layerState.activeLayerId,
         canvasWidth: canvasW,
         canvasHeight: canvasH,
+        historyUndoStack: canvasState.historyUndoStack,
+        historyRedoStack: canvasState.historyRedoStack,
       );
+
+      if (Hive.isBoxOpen('settings')) {
+        Hive.box('settings').put('last_opened_project_id', projectId);
+      }
 
       // Save thumbnail
       if (widget.project != null) {
@@ -177,7 +210,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
         activeLayerId: layerState.activeLayerId,
         canvasWidth: canvasW,
         canvasHeight: canvasH,
+        historyUndoStack: canvasState.historyUndoStack,
+        historyRedoStack: canvasState.historyRedoStack,
       );
+
+      if (Hive.isBoxOpen('settings')) {
+        Hive.box('settings').put('last_opened_project_id', projectId);
+      }
     } catch (_) {}
   }
 
@@ -248,6 +287,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen> {
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
         _saveArtworkDirectly();
+        if (Hive.isBoxOpen('settings')) {
+          Hive.box('settings').delete('last_opened_project_id');
+        }
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF141414),

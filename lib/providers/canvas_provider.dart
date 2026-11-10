@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/canvas_model.dart';
 import '../models/brush_model.dart';
+import '../models/history_model.dart';
 import '../utils/blend_modes.dart';
 import 'layer_provider.dart';
 
@@ -108,6 +109,8 @@ class CanvasState {
   final Map<String, List<DrawStroke>> committedStrokes;
   final List<List<DrawStroke>> undoStack;
   final List<List<DrawStroke>> redoStack;
+  final List<CanvasHistoryEntry> historyUndoStack;
+  final List<CanvasHistoryEntry> historyRedoStack;
   final bool isDrawing;
   final double zoomLevel;
   final Offset panOffset;
@@ -136,6 +139,8 @@ class CanvasState {
     this.committedStrokes = const {},
     this.undoStack = const [],
     this.redoStack = const [],
+    this.historyUndoStack = const [],
+    this.historyRedoStack = const [],
     this.isDrawing = false,
     this.zoomLevel = 1.0,
     this.panOffset = Offset.zero,
@@ -152,6 +157,9 @@ class CanvasState {
     this.stylusOnlyMode = false,
   });
 
+  bool get canUndo => historyUndoStack.isNotEmpty || undoStack.isNotEmpty;
+  bool get canRedo => historyRedoStack.isNotEmpty || redoStack.isNotEmpty;
+
   CanvasState copyWith({
     CanvasModel? canvas,
     DrawingTool? activeTool,
@@ -165,6 +173,8 @@ class CanvasState {
     Map<String, List<DrawStroke>>? committedStrokes,
     List<List<DrawStroke>>? undoStack,
     List<List<DrawStroke>>? redoStack,
+    List<CanvasHistoryEntry>? historyUndoStack,
+    List<CanvasHistoryEntry>? historyRedoStack,
     bool? isDrawing,
     double? zoomLevel,
     Offset? panOffset,
@@ -194,6 +204,8 @@ class CanvasState {
       committedStrokes: committedStrokes ?? this.committedStrokes,
       undoStack: undoStack ?? this.undoStack,
       redoStack: redoStack ?? this.redoStack,
+      historyUndoStack: historyUndoStack ?? this.historyUndoStack,
+      historyRedoStack: historyRedoStack ?? this.historyRedoStack,
       isDrawing: isDrawing ?? this.isDrawing,
       zoomLevel: zoomLevel ?? this.zoomLevel,
       panOffset: panOffset ?? this.panOffset,
@@ -225,6 +237,49 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   List<DrawPoint> _currentPoints = [];
   Offset? _shapeStart;
 
+  CanvasHistoryEntry _createCurrentSnapshot() {
+    final currentLayers = _ref?.read(layerProvider).layers ?? [];
+    final currentActiveId =
+        _ref?.read(layerProvider).activeLayerId ?? state.activeLayerId;
+    return CanvasHistoryEntry(
+      committedStrokes: state.committedStrokes.map(
+        (k, v) => MapEntry(k, List<DrawStroke>.from(v)),
+      ),
+      layers: currentLayers.map((l) => l.copyWith()).toList(),
+      activeLayerId: currentActiveId,
+    );
+  }
+
+  /// Records a full document history snapshot before modifying strokes, layers, text, or gradients
+  void recordSnapshot() {
+    final snapshot = _createCurrentSnapshot();
+    final newUndo = [...state.historyUndoStack, snapshot];
+    if (newUndo.length > 50) {
+      newUndo.removeAt(0);
+    }
+    state = state.copyWith(
+      historyUndoStack: newUndo,
+      historyRedoStack: [],
+    );
+  }
+
+  void setHistory({
+    List<CanvasHistoryEntry>? undoStack,
+    List<CanvasHistoryEntry>? redoStack,
+  }) {
+    state = state.copyWith(
+      historyUndoStack: undoStack ?? state.historyUndoStack,
+      historyRedoStack: redoStack ?? state.historyRedoStack,
+    );
+  }
+
+  String _resolveActiveLayerId([String? layerId]) {
+    if (layerId != null && layerId.isNotEmpty) return layerId;
+    final fromLayer = _ref?.read(layerProvider).activeLayerId;
+    if (fromLayer != null && fromLayer.isNotEmpty) return fromLayer;
+    return state.activeLayerId;
+  }
+
   void initCanvas(CanvasModel canvas, String layerId) {
     state = state.copyWith(
       canvas: canvas,
@@ -232,6 +287,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       committedStrokes: {layerId: []},
       undoStack: [],
       redoStack: [],
+      historyUndoStack: [],
+      historyRedoStack: [],
     );
   }
 
@@ -244,6 +301,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       committedStrokes: strokes,
       undoStack: [],
       redoStack: [],
+      historyUndoStack: [],
+      historyRedoStack: [],
     );
   }
 
@@ -381,9 +440,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   void beginStroke(
       Offset position, BrushModel brush, Color color, double pressure,
       {String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    final activeId = _resolveActiveLayerId(layerId);
     final point = DrawPoint(
       position: position,
       pressure: pressure,
@@ -436,9 +493,11 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   void endStroke() {
     if (!state.isDrawing || _currentStroke == null) return;
 
+    recordSnapshot();
+
     final layerId = _currentStroke!.layerId.isNotEmpty
         ? _currentStroke!.layerId
-        : state.activeLayerId;
+        : _resolveActiveLayerId();
     final existing = state.committedStrokes[layerId] ?? [];
     final newCommitted =
         Map<String, List<DrawStroke>>.from(state.committedStrokes);
@@ -470,9 +529,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   bool fillShapeAt(Offset pos, Color color, {String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    final activeId = _resolveActiveLayerId(layerId);
     final existing = state.committedStrokes[activeId] ?? [];
     for (int i = existing.length - 1; i >= 0; i--) {
       final stroke = existing[i];
@@ -621,9 +678,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   /// Find text stroke near the given position
   int findTextStrokeAt(Offset pos, {String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    final activeId = _resolveActiveLayerId(layerId);
     final existing = state.committedStrokes[activeId] ?? [];
     for (int i = existing.length - 1; i >= 0; i--) {
       final s = existing[i];
@@ -653,9 +708,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     Offset? pos,
     String? layerId,
   }) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     final existing = state.committedStrokes[activeId] ?? [];
     if (index < 0 || index >= existing.length) return;
     final stroke = existing[index];
@@ -681,9 +735,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   /// Delete a stroke by index
   void deleteStroke(int index, {String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     final existing = state.committedStrokes[activeId] ?? [];
     if (index < 0 || index >= existing.length) return;
     final newStrokes = [...existing];
@@ -730,7 +783,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       brushId: 'shape',
       brushSize: strokeWidth,
       brushOpacity: 1.0,
-      layerId: state.activeLayerId,
+      layerId: _resolveActiveLayerId(),
       kind: kind,
       isFilled: isFilled,
       shapeStart: start,
@@ -767,9 +820,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   void commitText(String text, Offset pos, double size, Color color,
       {bool bold = false, bool italic = false, String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     final stroke = DrawStroke(
       points: [DrawPoint(position: pos)],
       color: color,
@@ -797,9 +849,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void commitFill(Color color, {String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     final stroke = DrawStroke(
       points: const [],
       color: color,
@@ -825,9 +876,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   void commitFloodFill(Uint8List imageBytes, Offset origin, ui.Image? decodedImage,
       {String? layerId, Color? color}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     final stroke = DrawStroke(
       points: [DrawPoint(position: origin)],
       color: color ?? Colors.black,
@@ -856,9 +906,8 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   void commitGradient(Offset start, Offset end, Color color1, Color color2,
       {bool isRadial = false, String? layerId}) {
-    final activeId = (layerId != null && layerId.isNotEmpty)
-        ? layerId
-        : state.activeLayerId;
+    recordSnapshot();
+    final activeId = _resolveActiveLayerId(layerId);
     var finalEnd = end;
     if ((finalEnd - start).distance < 10.0) {
       finalEnd = start + const Offset(150, 150);
@@ -894,6 +943,26 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   // --- History (Undo/Redo) ---
 
   void undo() {
+    if (state.historyUndoStack.isNotEmpty) {
+      final currentSnapshot = _createCurrentSnapshot();
+      final newUndo = [...state.historyUndoStack];
+      final target = newUndo.removeLast();
+      final newRedo = [...state.historyRedoStack, currentSnapshot];
+
+      _ref?.read(layerProvider.notifier).setLayers(
+            target.layers,
+            target.activeLayerId,
+          );
+
+      state = state.copyWith(
+        committedStrokes: target.committedStrokes,
+        activeLayerId: target.activeLayerId,
+        historyUndoStack: newUndo,
+        historyRedoStack: newRedo,
+      );
+      return;
+    }
+
     if (state.undoStack.isEmpty) return;
     final layerId = state.activeLayerId;
     final lastState = state.undoStack.last;
@@ -914,6 +983,26 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void redo() {
+    if (state.historyRedoStack.isNotEmpty) {
+      final currentSnapshot = _createCurrentSnapshot();
+      final newRedo = [...state.historyRedoStack];
+      final target = newRedo.removeLast();
+      final newUndo = [...state.historyUndoStack, currentSnapshot];
+
+      _ref?.read(layerProvider.notifier).setLayers(
+            target.layers,
+            target.activeLayerId,
+          );
+
+      state = state.copyWith(
+        committedStrokes: target.committedStrokes,
+        activeLayerId: target.activeLayerId,
+        historyUndoStack: newUndo,
+        historyRedoStack: newRedo,
+      );
+      return;
+    }
+
     if (state.redoStack.isEmpty) return;
     final layerId = state.activeLayerId;
     final nextState = state.redoStack.last;
@@ -934,6 +1023,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   void clearLayer(String layerId) {
+    recordSnapshot();
     final existing = state.committedStrokes[layerId] ?? [];
     final newUndoStack = [...state.undoStack, existing];
     final newCommitted =

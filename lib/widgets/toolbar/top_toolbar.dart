@@ -34,8 +34,8 @@ class TopToolbar extends ConsumerWidget {
     final canvasState = ref.watch(canvasProvider);
     final canvasNotifier = ref.read(canvasProvider.notifier);
 
-    final canUndo = canvasState.undoStack.isNotEmpty;
-    final canRedo = canvasState.redoStack.isNotEmpty;
+    final canUndo = canvasState.canUndo;
+    final canRedo = canvasState.canRedo;
 
     return Container(
       height: 48,

@@ -193,6 +193,7 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               } else if (activeTool == DrawingTool.eyedropper) {
                 _sampleColor(localPos, layerState, canvasState);
               } else if (activeTool == DrawingTool.transform) {
+                canvasNotifier.recordSnapshot();
                 final l = layerState.activeLayer;
                 if (l != null) {
                   final canvasW = canvasState.canvas.width.toDouble();

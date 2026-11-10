@@ -118,6 +118,24 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       _projectsBox = await Hive.openBox<ProjectModel>('projects');
     }
     setState(() => _isLoaded = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resumeLastOpenedProject();
+    });
+  }
+
+  void _resumeLastOpenedProject() {
+    if (!Hive.isBoxOpen('settings') || !mounted) return;
+    final lastId = Hive.box('settings').get('last_opened_project_id') as String?;
+    if (lastId != null && _projectsBox.containsKey(lastId)) {
+      final project = _projectsBox.get(lastId);
+      if (project != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CanvasScreen(project: project),
+          ),
+        );
+      }
+    }
   }
 
   void _createNewArtwork({

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/layer_model.dart';
+import 'canvas_provider.dart';
 
 const _uuid = Uuid();
 const Object _sentinel = Object();
@@ -64,17 +65,27 @@ final layerProvider =
       ],
       activeLayerId: initialLayerId,
     ),
+    ref,
   );
 });
 
 class LayerNotifier extends StateNotifier<LayerState> {
-  LayerNotifier(super.state);
+  final Ref? _ref;
+  LayerNotifier(super.state, [this._ref]);
+
+  void _recordSnapshot() {
+    final r = _ref;
+    if (r != null) {
+      r.read(canvasProvider.notifier).recordSnapshot();
+    }
+  }
 
   void setActiveLayer(String id) {
     state = state.copyWith(activeLayerId: id);
   }
 
   void addLayer({String? name, bool above = true}) {
+    _recordSnapshot();
     final id = _uuid.v4();
     final newLayer = LayerModel(
       id: id,
@@ -116,6 +127,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
   }
 
   void addImageLayer(Uint8List bytes, {String? name}) {
+    _recordSnapshot();
     final id = _uuid.v4();
     final newLayer = LayerModel(
       id: id,
@@ -138,6 +150,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
     Offset? initialPos,
     Size? canvasSize,
   }) {
+    _recordSnapshot();
     final id = _uuid.v4();
     double offX = 0.0;
     double offY = 0.0;
@@ -205,6 +218,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
     bool? isBold,
     bool? isItalic,
   }) {
+    _recordSnapshot();
     state = state.copyWith(
       layers: [
         for (final l in state.layers)
@@ -228,6 +242,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
   void moveLayerUp(String id) {
     final idx = state.layers.indexWhere((l) => l.id == id);
     if (idx <= 0) return; // Already at very top
+    _recordSnapshot();
     final newLayers = [...state.layers];
     final item = newLayers.removeAt(idx);
     newLayers.insert(idx - 1, item);
@@ -237,6 +252,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
   void moveLayerDown(String id) {
     final idx = state.layers.indexWhere((l) => l.id == id);
     if (idx < 0 || idx >= state.layers.length - 1) return; // Already at bottom
+    _recordSnapshot();
     final newLayers = [...state.layers];
     final item = newLayers.removeAt(idx);
     newLayers.insert(idx + 1, item);
@@ -244,6 +260,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
   }
 
   void addGroupLayer() {
+    _recordSnapshot();
     final id = _uuid.v4();
     final group = LayerModel(
       id: id,
@@ -258,6 +275,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
 
   void removeLayer(String id) {
     if (state.layers.length <= 1) return; // Keep at least 1 layer
+    _recordSnapshot();
     final newLayers = state.layers.where((l) => l.id != id).toList();
     final newActiveId = (state.activeLayerId == id ||
             !newLayers.any((l) => l.id == state.activeLayerId))
@@ -268,6 +286,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
 
   void duplicateLayer(String id) {
     final src = state.layers.firstWhere((l) => l.id == id);
+    _recordSnapshot();
     final newId = _uuid.v4();
     final dup = src.copyWith(
       id: newId,
@@ -281,6 +300,7 @@ class LayerNotifier extends StateNotifier<LayerState> {
   }
 
   void reorderLayer(int oldIdx, int newIdx) {
+    _recordSnapshot();
     final newLayers = [...state.layers];
     final item = newLayers.removeAt(oldIdx);
     newLayers.insert(newIdx, item);
