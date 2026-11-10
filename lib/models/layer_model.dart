@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
@@ -19,6 +20,14 @@ enum LayerBlendMode {
   saturation,
   color,
   luminosity,
+}
+
+/// Type of content represented by a layer
+enum LayerType {
+  drawing,
+  image,
+  text,
+  gradient,
 }
 
 extension LayerBlendModeExt on LayerBlendMode {
@@ -101,6 +110,7 @@ extension LayerBlendModeExt on LayerBlendMode {
 class LayerModel {
   final String id;
   String name;
+  LayerType layerType;
   Uint8List? pixelData; // Encoded PNG bytes
   bool isVisible;
   bool isLocked;
@@ -116,9 +126,17 @@ class LayerModel {
   double scale;
   double rotation;
 
+  // Text layer specific properties
+  String? textContent;
+  double? fontSize;
+  Color? textColor;
+  bool isBold;
+  bool isItalic;
+
   LayerModel({
     required this.id,
     required this.name,
+    this.layerType = LayerType.drawing,
     this.pixelData,
     this.isVisible = true,
     this.isLocked = false,
@@ -133,11 +151,20 @@ class LayerModel {
     this.offsetY = 0.0,
     this.scale = 1.0,
     this.rotation = 0.0,
+    this.textContent,
+    this.fontSize,
+    this.textColor,
+    this.isBold = false,
+    this.isItalic = false,
   }) : children = children ?? [];
+
+  bool get isTextLayer =>
+      layerType == LayerType.text || (textContent != null && textContent!.isNotEmpty);
 
   LayerModel copyWith({
     String? id,
     String? name,
+    LayerType? layerType,
     Uint8List? pixelData,
     bool? isVisible,
     bool? isLocked,
@@ -152,10 +179,16 @@ class LayerModel {
     double? offsetY,
     double? scale,
     double? rotation,
+    String? textContent,
+    double? fontSize,
+    Color? textColor,
+    bool? isBold,
+    bool? isItalic,
   }) {
     return LayerModel(
       id: id ?? this.id,
       name: name ?? this.name,
+      layerType: layerType ?? this.layerType,
       pixelData: pixelData ?? this.pixelData,
       isVisible: isVisible ?? this.isVisible,
       isLocked: isLocked ?? this.isLocked,
@@ -170,12 +203,18 @@ class LayerModel {
       offsetY: offsetY ?? this.offsetY,
       scale: scale ?? this.scale,
       rotation: rotation ?? this.rotation,
+      textContent: textContent ?? this.textContent,
+      fontSize: fontSize ?? this.fontSize,
+      textColor: textColor ?? this.textColor,
+      isBold: isBold ?? this.isBold,
+      isItalic: isItalic ?? this.isItalic,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
+        'layerType': layerType.index,
         'isVisible': isVisible,
         'isLocked': isLocked,
         'isAlphaLocked': isAlphaLocked,
@@ -184,11 +223,24 @@ class LayerModel {
         'isGroup': isGroup,
         'width': width,
         'height': height,
+        'offsetX': offsetX,
+        'offsetY': offsetY,
+        'scale': scale,
+        'rotation': rotation,
+        'pixelData': pixelData != null ? base64Encode(pixelData!) : null,
+        'textContent': textContent,
+        'fontSize': fontSize,
+        'textColor': textColor?.toARGB32(),
+        'isBold': isBold,
+        'isItalic': isItalic,
       };
 
   factory LayerModel.fromJson(Map<String, dynamic> json) => LayerModel(
         id: json['id'] as String,
         name: json['name'] as String,
+        layerType: json['layerType'] != null
+            ? LayerType.values[json['layerType'] as int]
+            : (json['textContent'] != null ? LayerType.text : LayerType.drawing),
         isVisible: json['isVisible'] as bool? ?? true,
         isLocked: json['isLocked'] as bool? ?? false,
         isAlphaLocked: json['isAlphaLocked'] as bool? ?? false,
@@ -197,5 +249,17 @@ class LayerModel {
         isGroup: json['isGroup'] as bool? ?? false,
         width: json['width'] as int? ?? 1080,
         height: json['height'] as int? ?? 1080,
+        offsetX: (json['offsetX'] as num?)?.toDouble() ?? 0.0,
+        offsetY: (json['offsetY'] as num?)?.toDouble() ?? 0.0,
+        scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
+        rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
+        pixelData: json['pixelData'] != null
+            ? base64Decode(json['pixelData'] as String)
+            : null,
+        textContent: json['textContent'] as String?,
+        fontSize: (json['fontSize'] as num?)?.toDouble(),
+        textColor: json['textColor'] != null ? Color(json['textColor'] as int) : null,
+        isBold: json['isBold'] as bool? ?? false,
+        isItalic: json['isItalic'] as bool? ?? false,
       );
 }

@@ -80,17 +80,37 @@ class CanvasPainter extends CustomPainter {
         canvas.translate(-canvasWidth / 2, -canvasHeight / 2);
       }
 
-      // Draw imported image if this is an image layer
+      // Draw imported image if this is an image layer (preserve aspect ratio, do not compress)
       final layerImg = layerImages[layer.id];
       if (layerImg != null) {
-        final src = Rect.fromLTWH(
-          0,
-          0,
-          layerImg.width.toDouble(),
-          layerImg.height.toDouble(),
+        final imgW = layerImg.width.toDouble();
+        final imgH = layerImg.height.toDouble();
+        final imgAspect = imgW / imgH;
+        final canvasAspect = canvasWidth / canvasHeight;
+
+        double drawW;
+        double drawH;
+
+        if (imgAspect > canvasAspect) {
+          drawW = canvasWidth;
+          drawH = canvasWidth / imgAspect;
+        } else {
+          drawH = canvasHeight;
+          drawW = canvasHeight * imgAspect;
+        }
+
+        final dst = Rect.fromCenter(
+          center: Offset(canvasWidth / 2, canvasHeight / 2),
+          width: drawW,
+          height: drawH,
         );
-        final dst = Rect.fromLTWH(0, 0, canvasWidth, canvasHeight);
-        canvas.drawImageRect(layerImg, src, dst, Paint());
+        final src = Rect.fromLTWH(0, 0, imgW, imgH);
+        canvas.drawImageRect(
+          layerImg,
+          src,
+          dst,
+          Paint()..filterQuality = FilterQuality.high,
+        );
       }
 
       // Draw committed strokes for this layer
@@ -103,6 +123,32 @@ class CanvasPainter extends CustomPainter {
       if (layer.id == activeLayerId) {
         for (final stroke in currentStrokes) {
           _renderStroke(canvas, stroke, size);
+        }
+      }
+
+      // Render text if this is a dedicated text layer
+      if (layer.isTextLayer) {
+        final text = layer.textContent ?? '';
+        if (text.isNotEmpty) {
+          final textStyle = TextStyle(
+            color: layer.textColor ?? Colors.white,
+            fontSize: layer.fontSize ?? 36.0,
+            fontWeight: layer.isBold ? FontWeight.bold : FontWeight.normal,
+            fontStyle: layer.isItalic ? FontStyle.italic : FontStyle.normal,
+          );
+          final textPainter = TextPainter(
+            text: TextSpan(text: text, style: textStyle),
+            textDirection: TextDirection.ltr,
+          )..layout();
+
+          // Render centered at canvas center (which the layer transform translates & scales)
+          textPainter.paint(
+            canvas,
+            Offset(
+              (canvasWidth - textPainter.width) / 2,
+              (canvasHeight - textPainter.height) / 2,
+            ),
+          );
         }
       }
 
@@ -151,6 +197,9 @@ class CanvasPainter extends CustomPainter {
       case StrokeKind.fill:
         _drawFill(canvas, stroke);
         break;
+      case StrokeKind.floodFill:
+        _drawFloodFill(canvas, stroke);
+        break;
       case StrokeKind.line:
       case StrokeKind.rectangle:
       case StrokeKind.roundedRectangle:
@@ -176,6 +225,20 @@ class CanvasPainter extends CustomPainter {
       ..color = stroke.color.withValues(alpha: stroke.brushOpacity)
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight), paint);
+  }
+
+  void _drawFloodFill(Canvas canvas, DrawStroke stroke) {
+    if (stroke.floodFillImage != null) {
+      canvas.drawImage(
+        stroke.floodFillImage!,
+        stroke.shapeStart ?? Offset.zero,
+        Paint()..filterQuality = FilterQuality.high,
+      );
+    } else if (stroke.imageBytes != null && stroke.imageBytes!.isNotEmpty) {
+      ui.decodeImageFromList(stroke.imageBytes!, (img) {
+        stroke.floodFillImage = img;
+      });
+    }
   }
 
   void _drawGradient(Canvas canvas, DrawStroke stroke) {

@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:collection/collection.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/canvas_provider.dart';
-import '../../providers/brush_provider.dart';
-import '../../providers/layer_provider.dart';
+import 'package:image/image.dart' as img;
 import '../../models/brush_model.dart';
+import '../../models/layer_model.dart';
+import '../../providers/brush_provider.dart';
+import '../../providers/canvas_provider.dart';
+import '../../providers/gradient_provider.dart';
+import '../../providers/layer_provider.dart';
 import '../../utils/blend_modes.dart';
 import 'canvas_painter.dart';
 
@@ -22,6 +28,16 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
   double _baseZoom = 1.0;
   Offset _basePan = Offset.zero;
   double _baseRotation = 0.0;
+  Offset _baseFocalPoint = Offset.zero;
+
+  // Layer transform gesture tracking
+  double _baseLayerScale = 1.0;
+  double _baseLayerRotation = 0.0;
+  Offset _baseLayerOffset = Offset.zero;
+  bool _isScalingCorner = false;
+  double _initialTouchDist = 0.0;
+  double _initialLayerScale = 1.0;
+
   bool _isGesturing = false;
   int _activePointers = 0;
   Offset? _lastDragPos;
@@ -34,9 +50,8 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
     final layerState = ref.watch(layerProvider);
     final brush = ref.watch(activeBrushProvider);
     final color = ref.watch(drawingColorProvider);
-    final secondaryColor =
-        ref.watch(drawingColorProvider.notifier).secondaryColor;
     final brushList = ref.watch(brushListProvider);
+    final gradientConfig = ref.watch(gradientConfigProvider);
 
     final brushMap = {for (final b in brushList) b.id: b};
 
@@ -53,7 +68,15 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
       builder: (context, constraints) {
         return GestureDetector(
           onScaleStart: (details) {
-            if (details.pointerCount >= 2) {
+            _baseFocalPoint = details.focalPoint;
+            if (canvasState.activeTool == DrawingTool.transform) {
+              final l = layerState.activeLayer;
+              if (l != null) {
+                _baseLayerScale = l.scale;
+                _baseLayerRotation = l.rotation;
+                _baseLayerOffset = Offset(l.offsetX, l.offsetY);
+              }
+            } else if (details.pointerCount >= 2) {
               _isGesturing = true;
               ref.read(canvasProvider.notifier).cancelCurrentStroke();
               _baseZoom = canvasState.zoomLevel;
@@ -62,11 +85,36 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
             }
           },
           onScaleUpdate: (details) {
-            if (details.pointerCount >= 2) {
+            if (canvasState.activeTool == DrawingTool.transform) {
+              final l = layerState.activeLayer;
+              if (l != null && details.pointerCount >= 2) {
+                _isGesturing = true;
+                final newScale =
+                    (_baseLayerScale * details.scale).clamp(0.05, 30.0);
+                final newRot = _baseLayerRotation + details.rotation;
+                final panDelta = (details.focalPoint - _baseFocalPoint) /
+                    canvasState.zoomLevel;
+                var delta = panDelta;
+                if (canvasState.rotation != 0.0) {
+                  final cosR = math.cos(-canvasState.rotation);
+                  final sinR = math.sin(-canvasState.rotation);
+                  delta = Offset(delta.dx * cosR - delta.dy * sinR,
+                      delta.dx * sinR + delta.dy * cosR);
+                }
+                ref.read(layerProvider.notifier).updateLayerTransform(
+                      l.id,
+                      scale: newScale,
+                      rotation: newRot,
+                      offsetX: _baseLayerOffset.dx + delta.dx,
+                      offsetY: _baseLayerOffset.dy + delta.dy,
+                    );
+              }
+            } else if (details.pointerCount >= 2) {
               _isGesturing = true;
               ref.read(canvasProvider.notifier).cancelCurrentStroke();
               final newZoom = (_baseZoom * details.scale).clamp(0.05, 50.0);
-              final newPan = _basePan + details.focalPointDelta;
+              final newPan =
+                  _basePan + (details.focalPoint - _baseFocalPoint);
               final newRotation = _baseRotation + details.rotation;
 
               ref.read(canvasProvider.notifier).setZoom(newZoom);
@@ -144,6 +192,58 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
                 });
               } else if (activeTool == DrawingTool.eyedropper) {
                 _sampleColor(localPos, layerState, canvasState);
+              } else if (activeTool == DrawingTool.transform) {
+                final l = layerState.activeLayer;
+                if (l != null) {
+                  final canvasW = canvasState.canvas.width.toDouble();
+                  final canvasH = canvasState.canvas.height.toDouble();
+                  final layerImg = layerState.layerImages[l.id];
+
+                  double naturalW = canvasW;
+                  double naturalH = canvasH;
+                  if (l.isTextLayer) {
+                    final text = l.textContent ?? '';
+                    final textStyle = TextStyle(
+                      fontSize: l.fontSize ?? 36.0,
+                      fontWeight: l.isBold ? FontWeight.bold : FontWeight.normal,
+                      fontStyle: l.isItalic ? FontStyle.italic : FontStyle.normal,
+                    );
+                    final tp = TextPainter(
+                      text: TextSpan(
+                          text: text.isNotEmpty ? text : 'Text',
+                          style: textStyle),
+                      textDirection: TextDirection.ltr,
+                    )..layout();
+                    naturalW = math.max(60.0, tp.width + 24.0);
+                    naturalH = math.max(40.0, tp.height + 24.0);
+                  } else if (layerImg != null) {
+                    final imgAspect = layerImg.width / layerImg.height;
+                    final canvasAspect = canvasW / canvasH;
+                    if (imgAspect > canvasAspect) {
+                      naturalW = canvasW;
+                      naturalH = canvasW / imgAspect;
+                    } else {
+                      naturalH = canvasH;
+                      naturalW = canvasH * imgAspect;
+                    }
+                  }
+
+                  final center = Offset(
+                      canvasW / 2 + l.offsetX, canvasH / 2 + l.offsetY);
+                  final touchDist = (localPos - center).distance;
+                  final cornerDist = math.sqrt(
+                      math.pow(naturalW * l.scale / 2, 2) +
+                          math.pow(naturalH * l.scale / 2, 2));
+
+                  if ((touchDist - cornerDist).abs() <
+                      50.0 / canvasState.zoomLevel) {
+                    _isScalingCorner = true;
+                    _initialTouchDist = math.max(10.0, touchDist);
+                    _initialLayerScale = l.scale;
+                  } else {
+                    _isScalingCorner = false;
+                  }
+                }
               }
             },
             onPointerMove: (event) {
@@ -194,12 +294,26 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
                 final delta = localPos - _lastDragPos!;
                 _lastDragPos = localPos;
                 final l = layerState.activeLayer;
-                if (l != null) {
-                  ref.read(layerProvider.notifier).updateLayerTransform(
-                        l.id,
-                        offsetX: l.offsetX + delta.dx,
-                        offsetY: l.offsetY + delta.dy,
-                      );
+                if (l != null && !_isGesturing) {
+                  if (_isScalingCorner && _initialTouchDist > 0) {
+                    final canvasW = canvasState.canvas.width.toDouble();
+                    final canvasH = canvasState.canvas.height.toDouble();
+                    final center = Offset(
+                        canvasW / 2 + l.offsetX, canvasH / 2 + l.offsetY);
+                    final currentDist = (localPos - center).distance;
+                    final scaleFactor = currentDist / _initialTouchDist;
+                    ref.read(layerProvider.notifier).updateLayerTransform(
+                          l.id,
+                          scale: (_initialLayerScale * scaleFactor)
+                              .clamp(0.05, 30.0),
+                        );
+                  } else {
+                    ref.read(layerProvider.notifier).updateLayerTransform(
+                          l.id,
+                          offsetX: l.offsetX + delta.dx,
+                          offsetY: l.offsetY + delta.dy,
+                        );
+                  }
                 }
               } else if (activeTool == DrawingTool.gradient &&
                   _gradientStart != null) {
@@ -211,6 +325,8 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               }
             },
             onPointerUp: (event) {
+              _isScalingCorner = false;
+              _initialTouchDist = 0.0;
               _activePointers = math.max(0, _activePointers - 1);
               if (_activePointers == 0) {
                 _isGesturing = false;
@@ -242,40 +358,64 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               } else if (activeTool == DrawingTool.shapes) {
                 canvasNotifier.commitShape();
               } else if (activeTool == DrawingTool.fill && localPos != null) {
-                final filled = canvasNotifier.fillShapeAt(
-                  localPos,
-                  color,
-                  layerId: activeLayerId,
-                );
-                if (!filled) {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Tap inside a shape, line, or text to fill with color'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
+                _performFloodFill(localPos, color);
               } else if (activeTool == DrawingTool.text && localPos != null) {
-                final textIdx = canvasNotifier.findTextStrokeAt(
-                  localPos,
-                  layerId: activeLayerId,
-                );
-                if (textIdx >= 0) {
-                  _showEditTextDialog(context, textIdx, activeLayerId);
+                final canvasW = canvasState.canvas.width.toDouble();
+                final canvasH = canvasState.canvas.height.toDouble();
+                String? tappedTextId;
+
+                for (final l in layerState.layers) {
+                  if (l.isTextLayer && l.isVisible) {
+                    final text = l.textContent ?? '';
+                    final tp = TextPainter(
+                      text: TextSpan(
+                        text: text.isNotEmpty ? text : 'Text',
+                        style: TextStyle(
+                          fontSize: l.fontSize ?? 36.0,
+                          fontWeight: l.isBold ? FontWeight.bold : FontWeight.normal,
+                          fontStyle: l.isItalic ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                      textDirection: TextDirection.ltr,
+                    )..layout();
+                    final cX = canvasW / 2 + l.offsetX;
+                    final cY = canvasH / 2 + l.offsetY;
+                    final boxW = math.max(60.0, tp.width + 30.0) * l.scale;
+                    final boxH = math.max(40.0, tp.height + 30.0) * l.scale;
+                    final rect = Rect.fromCenter(
+                        center: Offset(cX, cY), width: boxW, height: boxH);
+                    if (rect.contains(localPos)) {
+                      tappedTextId = l.id;
+                      break;
+                    }
+                  }
+                }
+
+                if (tappedTextId != null) {
+                  ref.read(layerProvider.notifier).setActiveLayer(tappedTextId);
+                  _showEditTextLayerDialog(context, tappedTextId);
                 } else {
-                  _showPlaceTextDialog(context, localPos, activeLayerId);
+                  _showAddTextLayerDialog(context, localPos);
                 }
               } else if (activeTool == DrawingTool.gradient &&
                   _gradientStart != null &&
                   localPos != null) {
+                String targetLayerId = activeLayerId;
+                if (gradientConfig.createInNewLayer) {
+                  final layerNotifier = ref.read(layerProvider.notifier);
+                  final newName =
+                      'Gradient ${layerState.layers.length + 1}';
+                  layerNotifier.addLayer(name: newName);
+                  targetLayerId = ref.read(layerProvider).activeLayerId;
+                }
+
                 canvasNotifier.commitGradient(
                   _gradientStart!,
                   localPos,
-                  color,
-                  secondaryColor,
-                  isRadial: canvasState.isRadialGradient,
-                  layerId: activeLayerId,
+                  gradientConfig.startColor,
+                  gradientConfig.endColor,
+                  isRadial: gradientConfig.isRadial,
+                  layerId: targetLayerId,
                 );
               }
 
@@ -305,9 +445,9 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
                   brushMap: brushMap,
                   gradientStart: _gradientStart,
                   gradientCurrent: _gradientCurrent,
-                  gradientColor1: color,
-                  gradientColor2: secondaryColor,
-                  isRadialGradient: canvasState.isRadialGradient,
+                  gradientColor1: gradientConfig.startColor,
+                  gradientColor2: gradientConfig.endColor,
+                  isRadialGradient: gradientConfig.isRadial,
                 ),
               ),
             ),
@@ -317,10 +457,198 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
     );
   }
 
-  void _showPlaceTextDialog(
-      BuildContext context, Offset pos, String layerId) {
+  bool _isFloodFilling = false;
+
+  /// MS Paint style BFS flood fill that stops at any drawn strokes/lines/shapes
+  Future<void> _performFloodFill(Offset localPos, Color fillColor) async {
+    if (_isFloodFilling) return;
+    _isFloodFilling = true;
+
+    try {
+      final canvasState = ref.read(canvasProvider);
+      final layerState = ref.read(layerProvider);
+      final activeLayerId = layerState.activeLayerId;
+      final brushList = ref.read(brushListProvider);
+      final brushMap = {for (final b in brushList) b.id: b};
+      final brush = ref.read(activeBrushProvider);
+
+      final canvasW = canvasState.canvas.width;
+      final canvasH = canvasState.canvas.height;
+
+      final startX = localPos.dx.round().clamp(0, canvasW - 1);
+      final startY = localPos.dy.round().clamp(0, canvasH - 1);
+
+      // 1. Snapshot the current visual canvas into raw RGBA bytes
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final painter = CanvasPainter(
+        layers: layerState.layers,
+        committedStrokes: canvasState.committedStrokes,
+        currentStrokes: const [],
+        activeLayerId: activeLayerId,
+        brushMap: brushMap,
+        showGrid: false,
+        gridSize: canvasState.gridSize,
+        symmetryMode: SymmetryMode.none,
+        radialSymmetryCount: 8,
+        showSymmetryGuide: false,
+        canvasState: canvasState,
+        layerImages: layerState.layerImages,
+      );
+      painter.paint(canvas, Size(canvasW.toDouble(), canvasH.toDouble()));
+      final picture = recorder.endRecording();
+      final snapImage = await picture.toImage(canvasW, canvasH);
+      final byteData =
+          await snapImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+
+      final startIdx = (startY * canvasW + startX) * 4;
+      final tR = bytes[startIdx];
+      final tG = bytes[startIdx + 1];
+      final tB = bytes[startIdx + 2];
+      final tA = bytes[startIdx + 3];
+
+      final fR = fillColor.red;
+      final fG = fillColor.green;
+      final fB = fillColor.blue;
+      final fA = fillColor.alpha;
+
+      // Don't fill if color is already the same
+      if ((tR - fR).abs() <= 5 &&
+          (tG - fG).abs() <= 5 &&
+          (tB - fB).abs() <= 5 &&
+          (tA - fA).abs() <= 5) {
+        return;
+      }
+
+      // Fast BFS flood fill using flat arrays
+      final numPixels = canvasW * canvasH;
+      final visited = Uint8List(numPixels);
+      final queue = Int32List(numPixels);
+      int head = 0;
+      int tail = 0;
+
+      queue[tail++] = startY * canvasW + startX;
+      visited[startY * canvasW + startX] = 1;
+
+      int minX = startX;
+      int maxX = startX;
+      int minY = startY;
+      int maxY = startY;
+
+      bool matches(int x, int y) {
+        final idx = (y * canvasW + x) * 4;
+        final r = bytes[idx];
+        final g = bytes[idx + 1];
+        final b = bytes[idx + 2];
+        final a = bytes[idx + 3];
+        final diff = (r - tR).abs() +
+            (g - tG).abs() +
+            (b - tB).abs() +
+            (a - tA).abs();
+        return diff <= 52; // Tolerance for antialiased stroke edges
+      }
+
+      while (head < tail) {
+        final pos = queue[head++];
+        final curX = pos % canvasW;
+        final curY = pos ~/ canvasW;
+
+        if (curX < minX) minX = curX;
+        if (curX > maxX) maxX = curX;
+        if (curY < minY) minY = curY;
+        if (curY > maxY) maxY = curY;
+
+        if (curX + 1 < canvasW) {
+          final n = curY * canvasW + (curX + 1);
+          if (visited[n] == 0 && matches(curX + 1, curY)) {
+            visited[n] = 1;
+            queue[tail++] = n;
+          }
+        }
+        if (curX - 1 >= 0) {
+          final n = curY * canvasW + (curX - 1);
+          if (visited[n] == 0 && matches(curX - 1, curY)) {
+            visited[n] = 1;
+            queue[tail++] = n;
+          }
+        }
+        if (curY + 1 < canvasH) {
+          final n = (curY + 1) * canvasW + curX;
+          if (visited[n] == 0 && matches(curX, curY + 1)) {
+            visited[n] = 1;
+            queue[tail++] = n;
+          }
+        }
+        if (curY - 1 >= 0) {
+          final n = (curY - 1) * canvasW + curX;
+          if (visited[n] == 0 && matches(curX, curY - 1)) {
+            visited[n] = 1;
+            queue[tail++] = n;
+          }
+        }
+      }
+
+      // 2. Extract bounding box of filled region
+      final regionW = maxX - minX + 1;
+      final regionH = maxY - minY + 1;
+      final regionRgba = Uint8List(regionW * regionH * 4);
+
+      for (int y = minY; y <= maxY; y++) {
+        final rowOffset = (y - minY) * regionW;
+        final srcRowOffset = y * canvasW;
+        for (int x = minX; x <= maxX; x++) {
+          if (visited[srcRowOffset + x] == 1) {
+            final rIdx = (rowOffset + (x - minX)) * 4;
+            regionRgba[rIdx] = fR;
+            regionRgba[rIdx + 1] = fG;
+            regionRgba[rIdx + 2] = fB;
+            regionRgba[rIdx + 3] = fA;
+          }
+        }
+      }
+
+      // Decode to hardware ui.Image
+      final completer = Completer<ui.Image>();
+      ui.decodeImageFromPixels(
+        regionRgba,
+        regionW,
+        regionH,
+        ui.PixelFormat.rgba8888,
+        (ui.Image img) => completer.complete(img),
+      );
+      final fillImage = await completer.future;
+
+      // Encode PNG for undo / persistence
+      final imgImage = img.Image.fromBytes(
+        width: regionW,
+        height: regionH,
+        bytes: regionRgba.buffer,
+        numChannels: 4,
+      );
+      final pngBytes = Uint8List.fromList(img.encodePng(imgImage));
+
+      ref.read(canvasProvider.notifier).commitFloodFill(
+            pngBytes,
+            Offset(minX.toDouble(), minY.toDouble()),
+            fillImage,
+            layerId: activeLayerId,
+            color: fillColor,
+          );
+    } catch (e) {
+      debugPrint('Error in flood fill: $e');
+    } finally {
+      _isFloodFilling = false;
+    }
+  }
+
+  void _showAddTextLayerDialog(BuildContext context, Offset pos) {
     final textController = TextEditingController();
-    double fontSize = 36.0;
+    double fontSize = 42.0;
+    Color textColor = ref.read(drawingColorProvider);
+    bool isBold = false;
+    bool isItalic = false;
 
     showDialog(
       context: context,
@@ -329,45 +657,94 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
           backgroundColor: const Color(0xFF282828),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Add Text',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          title: const Row(
             children: [
-              TextField(
-                controller: textController,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                decoration: const InputDecoration(
-                  hintText: 'Enter text here...',
-                  hintStyle: TextStyle(color: Colors.white38),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+              Icon(Icons.title, color: Color(0xFF6C63FF), size: 22),
+              SizedBox(width: 8),
+              Text('Add Text Layer',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 18,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
                   ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF6C63FF)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Size: ',
-                      style: TextStyle(color: Colors.white70)),
-                  Expanded(
-                    child: Slider(
-                      value: fontSize,
-                      min: 12.0,
-                      max: 160.0,
-                      onChanged: (v) => setDialogState(() => fontSize = v),
+                  decoration: const InputDecoration(
+                    hintText: 'Type text here...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF6C63FF)),
                     ),
                   ),
-                  Text('${fontSize.round()} pt',
-                      style: const TextStyle(color: Colors.white70)),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.format_bold,
+                          color: isBold
+                              ? const Color(0xFF6C63FF)
+                              : Colors.white38),
+                      tooltip: 'Bold',
+                      onPressed: () => setDialogState(() => isBold = !isBold),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.format_italic,
+                          color: isItalic
+                              ? const Color(0xFF6C63FF)
+                              : Colors.white38),
+                      tooltip: 'Italic',
+                      onPressed: () =>
+                          setDialogState(() => isItalic = !isItalic),
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: textColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white54, width: 2),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Size: ',
+                        style: TextStyle(color: Colors.white70)),
+                    Expanded(
+                      child: Slider(
+                        value: fontSize,
+                        min: 14.0,
+                        max: 180.0,
+                        onChanged: (v) => setDialogState(() => fontSize = v),
+                      ),
+                    ),
+                    Text('${fontSize.round()} pt',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -384,14 +761,28 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               onPressed: () {
                 final txt = textController.text.trim();
                 if (txt.isNotEmpty) {
-                  final color = ref.read(drawingColorProvider);
-                  ref.read(canvasProvider.notifier).commitText(
+                  final canvasState = ref.read(canvasProvider);
+                  final canvasW = canvasState.canvas.width.toDouble();
+                  final canvasH = canvasState.canvas.height.toDouble();
+                  ref.read(layerProvider.notifier).addTextLayer(
                         txt,
-                        pos,
-                        fontSize,
-                        color,
-                        layerId: layerId,
+                        fontSize: fontSize,
+                        color: textColor,
+                        isBold: isBold,
+                        isItalic: isItalic,
+                        initialPos: pos,
+                        canvasSize: Size(canvasW, canvasH),
                       );
+                  ref
+                      .read(canvasProvider.notifier)
+                      .setTool(DrawingTool.transform);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Text layer created! Drag to move, pinch to scale/rotate.'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
                 }
                 Navigator.of(ctx).pop();
               },
@@ -402,15 +793,18 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
     );
   }
 
-  void _showEditTextDialog(
-      BuildContext context, int strokeIdx, String layerId) {
-    final strokes =
-        ref.read(canvasProvider).committedStrokes[layerId] ?? [];
-    if (strokeIdx < 0 || strokeIdx >= strokes.length) return;
-    final stroke = strokes[strokeIdx];
+  void _showEditTextLayerDialog(BuildContext context, String layerId) {
+    final layerState = ref.read(layerProvider);
+    final layer =
+        layerState.layers.firstWhereOrNull((l) => l.id == layerId);
+    if (layer == null) return;
 
-    final textController = TextEditingController(text: stroke.text ?? '');
-    double fontSize = stroke.fontSize ?? 36.0;
+    final textController =
+        TextEditingController(text: layer.textContent ?? '');
+    double fontSize = layer.fontSize ?? 42.0;
+    Color textColor = layer.textColor ?? Colors.white;
+    bool isBold = layer.isBold;
+    bool isItalic = layer.isItalic;
 
     showDialog(
       context: context,
@@ -419,57 +813,96 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
           backgroundColor: const Color(0xFF282828),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Edit Text',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          title: const Row(
             children: [
-              TextField(
-                controller: textController,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                decoration: const InputDecoration(
-                  hintText: 'Edit text...',
-                  hintStyle: TextStyle(color: Colors.white38),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF6C63FF)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Size: ',
-                      style: TextStyle(color: Colors.white70)),
-                  Expanded(
-                    child: Slider(
-                      value: fontSize,
-                      min: 12.0,
-                      max: 160.0,
-                      onChanged: (v) => setDialogState(() => fontSize = v),
-                    ),
-                  ),
-                  Text('${fontSize.round()} pt',
-                      style: const TextStyle(color: Colors.white70)),
-                ],
-              ),
+              Icon(Icons.edit, color: Color(0xFF6C63FF), size: 22),
+              SizedBox(width: 8),
+              Text('Edit Text Layer',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18)),
             ],
           ),
-          actions: [
-            TextButton(
-              child: const Text('Delete',
-                  style: TextStyle(color: Colors.redAccent)),
-              onPressed: () {
-                ref
-                    .read(canvasProvider.notifier)
-                    .deleteStroke(strokeIdx, layerId: layerId);
-                Navigator.of(ctx).pop();
-              },
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 18,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: 'Edit text...',
+                    hintStyle: TextStyle(color: Colors.white38),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF6C63FF)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.format_bold,
+                          color: isBold
+                              ? const Color(0xFF6C63FF)
+                              : Colors.white38),
+                      tooltip: 'Bold',
+                      onPressed: () => setDialogState(() => isBold = !isBold),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.format_italic,
+                          color: isItalic
+                              ? const Color(0xFF6C63FF)
+                              : Colors.white38),
+                      tooltip: 'Italic',
+                      onPressed: () =>
+                          setDialogState(() => isItalic = !isItalic),
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: textColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white54, width: 2),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('Size: ',
+                        style: TextStyle(color: Colors.white70)),
+                    Expanded(
+                      child: Slider(
+                        value: fontSize,
+                        min: 14.0,
+                        max: 180.0,
+                        onChanged: (v) => setDialogState(() => fontSize = v),
+                      ),
+                    ),
+                    Text('${fontSize.round()} pt',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ],
             ),
+          ),
+          actions: [
             TextButton(
               child:
                   const Text('Cancel', style: TextStyle(color: Colors.white54)),
@@ -479,16 +912,18 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6C63FF),
               ),
-              child:
-                  const Text('Save', style: TextStyle(color: Colors.white)),
+              child: const Text('Save Changes',
+                  style: TextStyle(color: Colors.white)),
               onPressed: () {
                 final txt = textController.text.trim();
                 if (txt.isNotEmpty) {
-                  ref.read(canvasProvider.notifier).updateTextStroke(
-                        strokeIdx,
+                  ref.read(layerProvider.notifier).updateTextLayer(
+                        layerId,
                         text: txt,
                         fontSize: fontSize,
-                        layerId: layerId,
+                        color: textColor,
+                        isBold: isBold,
+                        isItalic: isItalic,
                       );
                 }
                 Navigator.of(ctx).pop();
@@ -525,14 +960,25 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
     final canvasH = state.canvas.height.toDouble();
     final zoom = state.zoomLevel;
     final pan = state.panOffset;
+    final rotation = state.rotation;
 
-    final scaledW = canvasW * zoom;
-    final scaledH = canvasH * zoom;
-    final originX = (constraints.maxWidth - scaledW) / 2 + pan.dx;
-    final originY = (constraints.maxHeight - scaledH) / 2 + pan.dy;
+    final centerX = constraints.maxWidth / 2 + pan.dx;
+    final centerY = constraints.maxHeight / 2 + pan.dy;
 
-    final canvasX = (screenPoint.dx - originX) / zoom;
-    final canvasY = (screenPoint.dy - originY) / zoom;
+    var dx = screenPoint.dx - centerX;
+    var dy = screenPoint.dy - centerY;
+
+    if (rotation != 0.0) {
+      final cosR = math.cos(-rotation);
+      final sinR = math.sin(-rotation);
+      final rx = dx * cosR - dy * sinR;
+      final ry = dx * sinR + dy * cosR;
+      dx = rx;
+      dy = ry;
+    }
+
+    final canvasX = dx / zoom + canvasW / 2;
+    final canvasY = dy / zoom + canvasH / 2;
 
     return Offset(canvasX, canvasY);
   }
@@ -569,24 +1015,24 @@ class _ViewportPainter extends CustomPainter {
     final pan = canvasState.panOffset;
     final rotation = canvasState.rotation;
 
-    final scaledW = canvasW * zoom;
-    final scaledH = canvasH * zoom;
-    final originX = (size.width - scaledW) / 2 + pan.dx;
-    final originY = (size.height - scaledH) / 2 + pan.dy;
-
-    // Drop shadow behind canvas
-    canvas.drawRect(
-      Rect.fromLTWH(originX + 6, originY + 6, scaledW, scaledH),
-      Paint()..color = Colors.black.withValues(alpha: 0.5),
-    );
+    final centerX = size.width / 2 + pan.dx;
+    final centerY = size.height / 2 + pan.dy;
 
     canvas.save();
-    canvas.translate(originX + scaledW / 2, originY + scaledH / 2);
+    canvas.translate(centerX, centerY);
     if (rotation != 0.0) {
       canvas.rotate(rotation);
     }
-    canvas.translate(-scaledW / 2, -scaledH / 2);
     canvas.scale(zoom);
+    canvas.translate(-canvasW / 2, -canvasH / 2);
+
+    // Drop shadow behind canvas
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, canvasW, canvasH),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 8),
+    );
 
     // Paint canvas content
     final canvasPainter = CanvasPainter(
@@ -605,6 +1051,105 @@ class _ViewportPainter extends CustomPainter {
     );
 
     canvasPainter.paint(canvas, Size(canvasW, canvasH));
+
+    // Active Layer Transform Bounding Box & Interactive Handles
+    if (canvasState.activeTool == DrawingTool.transform &&
+        layerState.activeLayer != null) {
+      final l = layerState.activeLayer!;
+      final layerImg = layerState.layerImages[l.id];
+
+      double naturalW = canvasW;
+      double naturalH = canvasH;
+      if (l.isTextLayer) {
+        final text = l.textContent ?? '';
+        final textStyle = TextStyle(
+          fontSize: l.fontSize ?? 36.0,
+          fontWeight: l.isBold ? FontWeight.bold : FontWeight.normal,
+          fontStyle: l.isItalic ? FontStyle.italic : FontStyle.normal,
+        );
+        final tp = TextPainter(
+          text: TextSpan(
+              text: text.isNotEmpty ? text : 'Text',
+              style: textStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        naturalW = math.max(60.0, tp.width + 24.0);
+        naturalH = math.max(40.0, tp.height + 24.0);
+      } else if (layerImg != null) {
+        final imgAspect = layerImg.width / layerImg.height;
+        final canvasAspect = canvasW / canvasH;
+        if (imgAspect > canvasAspect) {
+          naturalW = canvasW;
+          naturalH = canvasW / imgAspect;
+        } else {
+          naturalH = canvasH;
+          naturalW = canvasH * imgAspect;
+        }
+      }
+
+      final halfW = (naturalW * l.scale) / 2;
+      final halfH = (naturalH * l.scale) / 2;
+
+      canvas.save();
+      canvas.translate(canvasW / 2 + l.offsetX, canvasH / 2 + l.offsetY);
+      if (l.rotation != 0.0) canvas.rotate(l.rotation);
+
+      final boxPaint = Paint()
+        ..color = const Color(0xFF6C63FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0 / zoom;
+
+      final handlePaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+
+      final handleBorder = Paint()
+        ..color = const Color(0xFF6C63FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0 / zoom;
+
+      final handleRadius = 8.0 / zoom;
+
+      // Draw bounding rectangle
+      canvas.drawRect(Rect.fromLTRB(-halfW, -halfH, halfW, halfH), boxPaint);
+
+      // Corner handles
+      void drawCircleHandle(double x, double y) {
+        canvas.drawCircle(Offset(x, y), handleRadius, handlePaint);
+        canvas.drawCircle(Offset(x, y), handleRadius, handleBorder);
+      }
+
+      drawCircleHandle(-halfW, -halfH); // Top-left
+      drawCircleHandle(halfW, -halfH); // Top-right
+      drawCircleHandle(-halfW, halfH); // Bottom-left
+      drawCircleHandle(halfW, halfH); // Bottom-right
+
+      // Edge midpoint handles
+      drawCircleHandle(0, -halfH);
+      drawCircleHandle(0, halfH);
+      drawCircleHandle(-halfW, 0);
+      drawCircleHandle(halfW, 0);
+
+      // Rotation pin at top
+      final rotationPinY = -halfH - 24.0 / zoom;
+      canvas.drawLine(Offset(0, -halfH), Offset(0, rotationPinY), boxPaint);
+      canvas.drawCircle(
+          Offset(0, rotationPinY), handleRadius, Paint()..color = const Color(0xFF6C63FF));
+      canvas.drawCircle(
+          Offset(0, rotationPinY),
+          handleRadius,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5 / zoom);
+
+      // Center crosshair
+      final crossSize = 8.0 / zoom;
+      canvas.drawLine(Offset(-crossSize, 0), Offset(crossSize, 0), boxPaint);
+      canvas.drawLine(Offset(0, -crossSize), Offset(0, crossSize), boxPaint);
+
+      canvas.restore();
+    }
 
     // Live gradient drag guideline preview
     if (gradientStart != null && gradientCurrent != null) {

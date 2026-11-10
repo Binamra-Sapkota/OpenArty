@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
@@ -194,6 +197,22 @@ class DrawPoint {
     this.size = 1.0,
     this.opacity = 1.0,
   });
+
+  Map<String, dynamic> toJson() => {
+        'dx': position.dx,
+        'dy': position.dy,
+        'p': pressure,
+        's': size,
+        'o': opacity,
+      };
+
+  factory DrawPoint.fromJson(Map<String, dynamic> json) => DrawPoint(
+        position: Offset(
+            (json['dx'] as num).toDouble(), (json['dy'] as num).toDouble()),
+        pressure: (json['p'] as num?)?.toDouble() ?? 1.0,
+        size: (json['s'] as num?)?.toDouble() ?? 1.0,
+        opacity: (json['o'] as num?)?.toDouble() ?? 1.0,
+      );
 }
 
 /// Stroke types (freehand brush or geometric shapes / text / fill)
@@ -206,6 +225,7 @@ enum StrokeKind {
   ellipse,
   triangle,
   fill,
+  floodFill,
   text,
   gradientLinear,
   gradientRadial,
@@ -227,6 +247,8 @@ class DrawStroke {
   final Color? secondaryColor; // For gradients
   final Offset? shapeStart;
   final Offset? shapeEnd;
+  final Uint8List? imageBytes;
+  ui.Image? floodFillImage;
 
   DrawStroke({
     required this.points,
@@ -243,6 +265,8 @@ class DrawStroke {
     this.secondaryColor,
     this.shapeStart,
     this.shapeEnd,
+    this.imageBytes,
+    this.floodFillImage,
   });
 
   DrawStroke copyWith({
@@ -260,6 +284,8 @@ class DrawStroke {
     Color? secondaryColor,
     Offset? shapeStart,
     Offset? shapeEnd,
+    Uint8List? imageBytes,
+    ui.Image? floodFillImage,
   }) {
     return DrawStroke(
       points: points ?? this.points,
@@ -276,6 +302,59 @@ class DrawStroke {
       secondaryColor: secondaryColor ?? this.secondaryColor,
       shapeStart: shapeStart ?? this.shapeStart,
       shapeEnd: shapeEnd ?? this.shapeEnd,
+      imageBytes: imageBytes ?? this.imageBytes,
+      floodFillImage: floodFillImage ?? this.floodFillImage,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'points': points.map((p) => p.toJson()).toList(),
+        'color': color.toARGB32(),
+        'brushId': brushId,
+        'brushSize': brushSize,
+        'brushOpacity': brushOpacity,
+        'layerId': layerId,
+        'blendMode': blendMode,
+        'kind': kind.index,
+        'isFilled': isFilled,
+        'text': text,
+        'fontSize': fontSize,
+        'secondaryColor': secondaryColor?.toARGB32(),
+        'shapeStartX': shapeStart?.dx,
+        'shapeStartY': shapeStart?.dy,
+        'shapeEndX': shapeEnd?.dx,
+        'shapeEndY': shapeEnd?.dy,
+        'imageBytes': imageBytes != null ? base64Encode(imageBytes!) : null,
+      };
+
+  factory DrawStroke.fromJson(Map<String, dynamic> json) => DrawStroke(
+        points: ((json['points'] as List<dynamic>?) ?? [])
+            .map((p) => DrawPoint.fromJson(p as Map<String, dynamic>))
+            .toList(),
+        color: Color(json['color'] as int? ?? 0xFF000000),
+        brushId: json['brushId'] as String? ?? 'brush',
+        brushSize: (json['brushSize'] as num?)?.toDouble() ?? 8.0,
+        brushOpacity: (json['brushOpacity'] as num?)?.toDouble() ?? 1.0,
+        layerId: json['layerId'] as String? ?? '',
+        blendMode: json['blendMode'] as int? ?? 0,
+        kind: StrokeKind.values[(json['kind'] as int? ?? 0)
+            .clamp(0, StrokeKind.values.length - 1)],
+        isFilled: json['isFilled'] as bool? ?? false,
+        text: json['text'] as String?,
+        fontSize: (json['fontSize'] as num?)?.toDouble(),
+        secondaryColor: json['secondaryColor'] != null
+            ? Color(json['secondaryColor'] as int)
+            : null,
+        shapeStart: json['shapeStartX'] != null && json['shapeStartY'] != null
+            ? Offset((json['shapeStartX'] as num).toDouble(),
+                (json['shapeStartY'] as num).toDouble())
+            : null,
+        shapeEnd: json['shapeEndX'] != null && json['shapeEndY'] != null
+            ? Offset((json['shapeEndX'] as num).toDouble(),
+                (json['shapeEndY'] as num).toDouble())
+            : null,
+        imageBytes: json['imageBytes'] != null
+            ? base64Decode(json['imageBytes'] as String)
+            : null,
+      );
 }

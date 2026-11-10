@@ -25,7 +25,7 @@ void main() async {
 
   runApp(
     const ProviderScope(
-      child: OpenCreateApp(),
+      child: OpenArtyApp(),
     ),
   );
 }

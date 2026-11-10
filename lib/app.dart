@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/gallery_screen.dart';
 
-class OpenCreateApp extends ConsumerWidget {
-  const OpenCreateApp({super.key});
+class OpenArtyApp extends ConsumerWidget {
+  const OpenArtyApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
-      title: 'OpenCreate',
+      title: 'OpenArty',
       debugShowCheckedModeBanner: false,
       theme: _buildDarkTheme(),
       home: const GalleryScreen(),

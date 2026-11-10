@@ -1,9 +1,12 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/canvas_model.dart';
 import '../models/brush_model.dart';
 import '../utils/blend_modes.dart';
+import 'layer_provider.dart';
 
 enum DrawingTool {
   brush,
@@ -211,11 +214,12 @@ class CanvasState {
 
 final canvasProvider =
     StateNotifierProvider<CanvasNotifier, CanvasState>((ref) {
-  return CanvasNotifier();
+  return CanvasNotifier(ref);
 });
 
 class CanvasNotifier extends StateNotifier<CanvasState> {
-  CanvasNotifier() : super(const CanvasState());
+  final Ref? _ref;
+  CanvasNotifier([this._ref]) : super(const CanvasState());
 
   DrawStroke? _currentStroke;
   List<DrawPoint> _currentPoints = [];
@@ -235,11 +239,31 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     state = state.copyWith(canvas: canvas);
   }
 
+  void setCommittedStrokes(Map<String, List<DrawStroke>> strokes) {
+    state = state.copyWith(
+      committedStrokes: strokes,
+      undoStack: [],
+      redoStack: [],
+    );
+  }
+
   void setActiveLayer(String layerId) {
     state = state.copyWith(activeLayerId: layerId);
   }
 
   void setTool(DrawingTool tool) {
+    if (state.activeTool == DrawingTool.transform && tool != DrawingTool.transform) {
+      final r = _ref;
+      if (r != null) {
+        final layerState = r.read(layerProvider);
+        if (layerState.previousLayerIdBeforeTransform != null ||
+            layerState.activeLayer?.isTextLayer == true) {
+          r.read(layerProvider.notifier).restorePreviousLayerIfText();
+          final newActive = r.read(layerProvider).activeLayerId;
+          setActiveLayer(newActive);
+        }
+      }
+    }
     state = state.copyWith(activeTool: tool);
   }
 
@@ -784,6 +808,37 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       brushOpacity: 1.0,
       layerId: activeId,
       kind: StrokeKind.fill,
+    );
+
+    final existing = state.committedStrokes[activeId] ?? [];
+    final newCommitted =
+        Map<String, List<DrawStroke>>.from(state.committedStrokes);
+    newCommitted[activeId] = [...existing, stroke];
+
+    final newUndoStack = [...state.undoStack, existing];
+    state = state.copyWith(
+      committedStrokes: newCommitted,
+      undoStack: newUndoStack,
+      redoStack: [],
+    );
+  }
+
+  void commitFloodFill(Uint8List imageBytes, Offset origin, ui.Image? decodedImage,
+      {String? layerId, Color? color}) {
+    final activeId = (layerId != null && layerId.isNotEmpty)
+        ? layerId
+        : state.activeLayerId;
+    final stroke = DrawStroke(
+      points: [DrawPoint(position: origin)],
+      color: color ?? Colors.black,
+      brushId: 'flood_fill',
+      brushSize: 1,
+      brushOpacity: 1.0,
+      layerId: activeId,
+      kind: StrokeKind.floodFill,
+      shapeStart: origin,
+      imageBytes: imageBytes,
+      floodFillImage: decodedImage,
     );
 
     final existing = state.committedStrokes[activeId] ?? [];

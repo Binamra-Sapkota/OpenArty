@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -17,7 +18,7 @@ class ImageUtils {
   static Future<Directory> getExportDirectory({String folder = 'Pictures'}) async {
     if (Platform.isAndroid) {
       try {
-        final targetDir = Directory('/storage/emulated/0/$folder/OpenCreate');
+        final targetDir = Directory('/storage/emulated/0/$folder/OpenArty');
         if (!await targetDir.exists()) {
           await targetDir.create(recursive: true);
         }
@@ -26,7 +27,7 @@ class ImageUtils {
     }
     final dir = await getExternalStorageDirectory() ??
         await getApplicationDocumentsDirectory();
-    final exportDir = Directory('${dir.path}/$folder/OpenCreate');
+    final exportDir = Directory('${dir.path}/$folder/OpenArty');
     if (!await exportDir.exists()) {
       await exportDir.create(recursive: true);
     }
@@ -213,6 +214,18 @@ class ImageUtils {
         }
       }
 
+      // Render dedicated text layer into SVG
+      if (layer.isTextLayer && layer.textContent != null && layer.textContent!.isNotEmpty) {
+        final tColor = _colorToHex(layer.textColor ?? Colors.white);
+        final fSize = (layer.fontSize ?? 36.0).toStringAsFixed(1);
+        final cX = (width / 2 + layer.offsetX).toStringAsFixed(1);
+        final cY = (height / 2 + layer.offsetY).toStringAsFixed(1);
+        final weight = layer.isBold ? ' font-weight="bold"' : '';
+        final style = layer.isItalic ? ' font-style="italic"' : '';
+        sb.writeln(
+            '    <text x="$cX" y="$cY" font-size="$fSize" fill="$tColor" text-anchor="middle" dominant-baseline="middle"$weight$style opacity="${layer.opacity.toStringAsFixed(2)}">${_escapeXml(layer.textContent!)}</text>');
+      }
+
       sb.writeln('  </g>');
     }
 
@@ -269,6 +282,101 @@ class ImageUtils {
     return file.path;
   }
 
+  /// Export artwork as Adobe Photoshop PSD document (.psd)
+  static Future<String> exportAsPsd(
+    ui.Image image,
+    String projectName, {
+    int? width,
+    int? height,
+    String? customDir,
+  }) async {
+    final w = width ?? image.width;
+    final h = height ?? image.height;
+
+    final byteData =
+        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (byteData == null) {
+      throw Exception('Failed to get raw RGBA data for PSD export');
+    }
+    final rawRgba = byteData.buffer.asUint8List();
+
+    final psdBytes = buildPsdBytes(w, h, rawRgba);
+
+    final Directory exportDir = customDir != null
+        ? Directory(customDir)
+        : await getExportDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${exportDir.path}/${projectName}_$timestamp.psd');
+    await file.writeAsBytes(psdBytes);
+    return file.path;
+  }
+
+  /// Build standard Adobe Photoshop PSD bytes with RGBA channels
+  static Uint8List buildPsdBytes(int width, int height, Uint8List rawRgba) {
+    final numPixels = width * height;
+    const channels = 4; // R, G, B, A
+
+    final builder = BytesBuilder();
+
+    // 1. Header (26 bytes)
+    final header = ByteData(26);
+    header.setUint8(0, 0x38); // '8'
+    header.setUint8(1, 0x42); // 'B'
+    header.setUint8(2, 0x50); // 'P'
+    header.setUint8(3, 0x53); // 'S'
+    header.setUint16(4, 1); // Version 1
+    // 6 reserved bytes: 0
+    header.setUint16(12, channels);
+    header.setUint32(14, height);
+    header.setUint32(18, width);
+    header.setUint16(22, 8); // 8 bits per channel
+    header.setUint16(24, 3); // 3 = RGB mode
+    builder.add(header.buffer.asUint8List());
+
+    // 2. Color Mode Data Section (Length: 0 for RGB)
+    final colorModeLen = ByteData(4);
+    colorModeLen.setUint32(0, 0);
+    builder.add(colorModeLen.buffer.asUint8List());
+
+    // 3. Image Resources Section (Length: 0)
+    final resLen = ByteData(4);
+    resLen.setUint32(0, 0);
+    builder.add(resLen.buffer.asUint8List());
+
+    // 4. Layer and Mask Section (Section length: 4, Layer Info length: 0)
+    final layerLen = ByteData(8);
+    layerLen.setUint32(0, 4); // Section length = 4
+    layerLen.setUint32(4, 0); // Layer info length = 0
+    builder.add(layerLen.buffer.asUint8List());
+
+    // 5. Image Data Section (Composite)
+    // Compression: 0 = Raw
+    final comp = ByteData(2);
+    comp.setUint16(0, 0);
+    builder.add(comp.buffer.asUint8List());
+
+    // Planar channel separation
+    final rPlane = Uint8List(numPixels);
+    final gPlane = Uint8List(numPixels);
+    final bPlane = Uint8List(numPixels);
+    final aPlane = Uint8List(numPixels);
+
+    for (int i = 0; i < numPixels; i++) {
+      final idx = i * 4;
+      rPlane[i] = rawRgba[idx];
+      gPlane[i] = rawRgba[idx + 1];
+      bPlane[i] = rawRgba[idx + 2];
+      aPlane[i] = rawRgba[idx + 3];
+    }
+
+    builder.add(rPlane);
+    builder.add(gPlane);
+    builder.add(bPlane);
+    builder.add(aPlane);
+
+    return builder.toBytes();
+  }
+
   static String _colorToHex(Color color) {
     return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
   }
@@ -295,7 +403,7 @@ class ImageUtils {
     final thumbBytes = img.encodePng(thumb);
 
     final dir = await getApplicationDocumentsDirectory();
-    final thumbDir = Directory('${dir.path}/OpenCreate/thumbnails');
+    final thumbDir = Directory('${dir.path}/OpenArty/thumbnails');
     await thumbDir.create(recursive: true);
     final file = File('${thumbDir.path}/$projectId.png');
     await file.writeAsBytes(thumbBytes);
@@ -386,5 +494,69 @@ class ImageUtils {
     if (imgImage == null) throw Exception('Failed to decode image');
     final flipped = img.flipVertical(imgImage);
     return Uint8List.fromList(img.encodePng(flipped));
+  }
+
+  /// Crop image with specified bounding rectangle
+  static Future<Uint8List> cropImage(
+    Uint8List rawBytes, {
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) async {
+    final decoded = img.decodeImage(rawBytes);
+    if (decoded == null) return rawBytes;
+    final cropped = img.copyCrop(
+      decoded,
+      x: x.clamp(0, decoded.width - 1),
+      y: y.clamp(0, decoded.height - 1),
+      width: width.clamp(1, decoded.width),
+      height: height.clamp(1, decoded.height),
+    );
+    return Uint8List.fromList(img.encodePng(cropped));
+  }
+
+  static Future<File> getProjectFile(String projectId) async {
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final projectsDir = Directory('${appDocDir.path}/opencreate_projects');
+    if (!await projectsDir.exists()) {
+      await projectsDir.create(recursive: true);
+    }
+    return File('${projectsDir.path}/$projectId.json');
+  }
+
+  static Future<void> saveProjectData({
+    required String projectId,
+    required List<LayerModel> layers,
+    required Map<String, List<DrawStroke>> committedStrokes,
+    required String activeLayerId,
+    required int canvasWidth,
+    required int canvasHeight,
+  }) async {
+    final file = await getProjectFile(projectId);
+    final data = {
+      'projectId': projectId,
+      'savedAt': DateTime.now().toIso8601String(),
+      'activeLayerId': activeLayerId,
+      'canvasWidth': canvasWidth,
+      'canvasHeight': canvasHeight,
+      'layers': layers.map((l) => l.toJson()).toList(),
+      'committedStrokes': committedStrokes.map(
+        (key, strokes) =>
+            MapEntry(key, strokes.map((s) => s.toJson()).toList()),
+      ),
+    };
+    await file.writeAsString(jsonEncode(data));
+  }
+
+  static Future<Map<String, dynamic>?> loadProjectData(String projectId) async {
+    try {
+      final file = await getProjectFile(projectId);
+      if (!await file.exists()) return null;
+      final raw = await file.readAsString();
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 }

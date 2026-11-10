@@ -4,6 +4,7 @@ import '../../models/brush_model.dart';
 import '../../providers/canvas_provider.dart';
 import '../../providers/brush_provider.dart';
 import '../color/color_wheel.dart';
+import '../color/gradient_studio_sheet.dart';
 
 /// Professional mobile bottom toolbar inspired by Autodesk SketchBook.
 /// Compact, responsive, and customizable.
@@ -43,8 +44,9 @@ class BottomToolbar extends ConsumerWidget {
           ],
         ),
         child: SingleChildScrollView(
+          key: const PageStorageKey('bottom_toolbar_scroll'),
           scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
+          physics: const ClampingScrollPhysics(),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -109,7 +111,7 @@ class BottomToolbar extends ConsumerWidget {
               ),
 
               const VerticalDivider(
-                width: 14,
+                width: 8,
                 color: Colors.white12,
                 indent: 10,
                 endIndent: 10,
@@ -117,11 +119,12 @@ class BottomToolbar extends ConsumerWidget {
 
               // 5. Color Puck (Current Color preview & picker trigger)
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => _openColorWheel(context),
                 child: Container(
-                  width: 38,
-                  height: 38,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 36,
+                  height: 36,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
                     color: currentColor,
                     shape: BoxShape.circle,
@@ -148,7 +151,7 @@ class BottomToolbar extends ConsumerWidget {
               ),
 
               const VerticalDivider(
-                width: 14,
+                width: 8,
                 color: Colors.white12,
                 indent: 10,
                 endIndent: 10,
@@ -206,43 +209,19 @@ class BottomToolbar extends ConsumerWidget {
                 onLongPress: () => _showTextInputDialog(context, ref),
               ),
 
-              // 9. Gradient Tool
-              PopupMenuButton<bool>(
-                tooltip: 'Gradient Tool',
-                color: const Color(0xFF2C2C2C),
-                icon: Icon(
-                  Icons.gradient,
-                  color: activeTool == DrawingTool.gradient
-                      ? const Color(0xFF6C63FF)
-                      : Colors.white70,
-                  size: 22,
-                ),
-                onSelected: (isRadial) {
-                  canvasNotifier.setRadialGradient(isRadial);
+              // 9. Gradient Tool (Customizable Colors & Transparency)
+              _ToolIcon(
+                icon: Icons.gradient,
+                label: 'Gradient',
+                isActive: activeTool == DrawingTool.gradient,
+                onTap: () {
                   canvasNotifier.setTool(DrawingTool.gradient);
+                  _openGradientStudio(context);
                 },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: false,
-                    child: Row(
-                      children: [
-                        Icon(Icons.linear_scale, color: Colors.white70, size: 20),
-                        SizedBox(width: 8),
-                        Text('Linear Gradient', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: true,
-                    child: Row(
-                      children: [
-                        Icon(Icons.blur_circular, color: Colors.white70, size: 20),
-                        SizedBox(width: 8),
-                        Text('Radial Gradient', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                ],
+                onLongPress: () {
+                  canvasNotifier.setTool(DrawingTool.gradient);
+                  _openGradientStudio(context);
+                },
               ),
 
               // 10. Fill Tool (Paint Bucket)
@@ -301,6 +280,15 @@ class BottomToolbar extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => const ColorWheelSheet(),
+    );
+  }
+
+  void _openGradientStudio(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const GradientStudioSheet(),
     );
   }
 
@@ -405,10 +393,11 @@ class _ToolIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFF6C63FF).withValues(alpha: 0.25) : Colors.transparent,
           borderRadius: BorderRadius.circular(14),

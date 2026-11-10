@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:image/image.dart' as img;
 import '../../models/canvas_model.dart';
 import '../../providers/canvas_provider.dart';
 import '../../providers/layer_provider.dart';
@@ -60,7 +63,7 @@ class TopToolbar extends ConsumerWidget {
               if (showTitle) ...[
                 const SizedBox(width: 4),
                 const Text(
-                  'OpenCreate',
+                  'OpenArty',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
@@ -270,18 +273,9 @@ class TopToolbar extends ConsumerWidget {
     try {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(source: ImageSource.gallery);
-      if (file != null) {
+      if (file != null && context.mounted) {
         final bytes = await file.readAsBytes();
-        ref.read(layerProvider.notifier).addImageLayer(bytes, name: file.name);
-        ref.read(canvasProvider.notifier).setTool(DrawingTool.transform);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Imported image as new layer! Drag to move or scale, tap Done when finished.'),
-              duration: Duration(seconds: 4),
-            ),
-          );
-        }
+        await _showImageCropDialog(context, bytes, file.name, ref);
       }
     } catch (e) {
       if (context.mounted) {
@@ -290,6 +284,172 @@ class TopToolbar extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<void> _showImageCropDialog(
+    BuildContext context,
+    Uint8List bytes,
+    String fileName,
+    WidgetRef ref,
+  ) async {
+    String selectedCrop = 'Original';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF282828),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Add Image Layer',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    color: Colors.black26,
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Crop Mode (Preserves quality & ratio):',
+                  style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _cropChip('Original', selectedCrop,
+                        (val) => setDialogState(() => selectedCrop = val)),
+                    _cropChip('1:1 Square', selectedCrop,
+                        (val) => setDialogState(() => selectedCrop = val)),
+                    _cropChip('16:9 Landscape', selectedCrop,
+                        (val) => setDialogState(() => selectedCrop = val)),
+                    _cropChip('9:16 Portrait', selectedCrop,
+                        (val) => setDialogState(() => selectedCrop = val)),
+                    _cropChip('4:3 Classic', selectedCrop,
+                        (val) => setDialogState(() => selectedCrop = val)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF),
+              ),
+              child:
+                  const Text('Add Layer', style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                Uint8List finalBytes = bytes;
+                if (selectedCrop != 'Original') {
+                  final decoded = img.decodeImage(bytes);
+                  if (decoded != null) {
+                    int cropW = decoded.width;
+                    int cropH = decoded.height;
+                    int cropX = 0;
+                    int cropY = 0;
+
+                    if (selectedCrop == '1:1 Square') {
+                      final side = math.min(decoded.width, decoded.height);
+                      cropW = side;
+                      cropH = side;
+                      cropX = (decoded.width - side) ~/ 2;
+                      cropY = (decoded.height - side) ~/ 2;
+                    } else if (selectedCrop == '16:9 Landscape') {
+                      if (decoded.width / decoded.height > 16 / 9) {
+                        cropH = decoded.height;
+                        cropW = (cropH * 16) ~/ 9;
+                        cropX = (decoded.width - cropW) ~/ 2;
+                      } else {
+                        cropW = decoded.width;
+                        cropH = (cropW * 9) ~/ 16;
+                        cropY = (decoded.height - cropH) ~/ 2;
+                      }
+                    } else if (selectedCrop == '9:16 Portrait') {
+                      if (decoded.width / decoded.height > 9 / 16) {
+                        cropH = decoded.height;
+                        cropW = (cropH * 9) ~/ 16;
+                        cropX = (decoded.width - cropW) ~/ 2;
+                      } else {
+                        cropW = decoded.width;
+                        cropH = (cropW * 16) ~/ 9;
+                        cropY = (decoded.height - cropH) ~/ 2;
+                      }
+                    } else if (selectedCrop == '4:3 Classic') {
+                      if (decoded.width / decoded.height > 4 / 3) {
+                        cropH = decoded.height;
+                        cropW = (cropH * 4) ~/ 3;
+                        cropX = (decoded.width - cropW) ~/ 2;
+                      } else {
+                        cropW = decoded.width;
+                        cropH = (cropW * 3) ~/ 4;
+                        cropY = (decoded.height - cropH) ~/ 2;
+                      }
+                    }
+
+                    final cropped = img.copyCrop(
+                      decoded,
+                      x: cropX,
+                      y: cropY,
+                      width: cropW,
+                      height: cropH,
+                    );
+                    finalBytes = Uint8List.fromList(img.encodePng(cropped));
+                  }
+                }
+
+                ref
+                    .read(layerProvider.notifier)
+                    .addImageLayer(finalBytes, name: fileName);
+                ref
+                    .read(canvasProvider.notifier)
+                    .setTool(DrawingTool.transform);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                          'Added layer! Drag to move, pinch or use slider to resize.'),
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cropChip(
+      String label, String currentSelected, ValueChanged<String> onSelected) {
+    final isSelected = label == currentSelected;
+    return ChoiceChip(
+      label: Text(label, style: const TextStyle(fontSize: 11)),
+      selected: isSelected,
+      selectedColor: const Color(0xFF6C63FF),
+      backgroundColor: const Color(0xFF383838),
+      onSelected: (_) => onSelected(label),
+    );
   }
 
   Future<void> _importReferenceImage(BuildContext context, WidgetRef ref) async {
@@ -546,10 +706,10 @@ class TopToolbar extends ConsumerWidget {
                     context: context,
                     formatName: 'PNG',
                     onSaveToFolder: (folder) =>
-                        ImageUtils.exportAsPng(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenCreate'),
+                        ImageUtils.exportAsPng(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenArty'),
                     onShare: () async {
                       final path = await ImageUtils.exportAsPng(image, 'Artwork');
-                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenArty');
                       return path;
                     },
                   );
@@ -566,7 +726,7 @@ class TopToolbar extends ConsumerWidget {
                 onShare: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsPng(image, 'Artwork');
-                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenArty');
                 },
               ),
 
@@ -585,10 +745,10 @@ class TopToolbar extends ConsumerWidget {
                     context: context,
                     formatName: 'JPEG',
                     onSaveToFolder: (folder) =>
-                        ImageUtils.exportAsJpeg(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenCreate'),
+                        ImageUtils.exportAsJpeg(image, 'Artwork', customDir: '/storage/emulated/0/$folder/OpenArty'),
                     onShare: () async {
                       final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
-                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                      await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenArty');
                       return path;
                     },
                   );
@@ -605,7 +765,7 @@ class TopToolbar extends ConsumerWidget {
                 onShare: () async {
                   Navigator.of(ctx).pop();
                   final path = await ImageUtils.exportAsJpeg(image, 'Artwork');
-                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenCreate');
+                  await Share.shareXFiles([XFile(path)], text: 'Artwork from OpenArty');
                 },
               ),
 
@@ -630,7 +790,7 @@ class TopToolbar extends ConsumerWidget {
                       committedStrokes: canvasState.committedStrokes,
                       projectName: 'Artwork',
                       backgroundColor: canvasState.canvas.backgroundColor,
-                      customDir: '/storage/emulated/0/$folder/OpenCreate',
+                      customDir: '/storage/emulated/0/$folder/OpenArty',
                     ),
                     onShare: () async {
                       final path = await ImageUtils.exportAsSvg(
@@ -641,7 +801,7 @@ class TopToolbar extends ConsumerWidget {
                         projectName: 'Artwork',
                         backgroundColor: canvasState.canvas.backgroundColor,
                       );
-                      await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenCreate');
+                      await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenArty');
                       return path;
                     },
                   );
@@ -672,7 +832,7 @@ class TopToolbar extends ConsumerWidget {
                     projectName: 'Artwork',
                     backgroundColor: canvasState.canvas.backgroundColor,
                   );
-                  await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenCreate');
+                  await Share.shareXFiles([XFile(path)], text: 'Vector artwork from OpenArty');
                 },
               ),
 
@@ -695,7 +855,7 @@ class TopToolbar extends ConsumerWidget {
                       'Artwork',
                       width: width,
                       height: height,
-                      customDir: '/storage/emulated/0/$folder/OpenCreate',
+                      customDir: '/storage/emulated/0/$folder/OpenArty',
                     ),
                     onShare: () async {
                       final path = await ImageUtils.exportAsPdf(
@@ -704,7 +864,7 @@ class TopToolbar extends ConsumerWidget {
                         width: width,
                         height: height,
                       );
-                      await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenCreate');
+                      await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenArty');
                       return path;
                     },
                   );
@@ -731,7 +891,66 @@ class TopToolbar extends ConsumerWidget {
                     width: width,
                     height: height,
                   );
-                  await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenCreate');
+                  await Share.shareXFiles([XFile(path)], text: 'PDF artwork from OpenArty');
+                },
+              ),
+
+              const Divider(color: Colors.white12, height: 16),
+
+              // 5. PSD Document Export
+              _exportFormatTile(
+                context: ctx,
+                title: 'Photoshop Document (.psd)',
+                subtitle: 'Adobe Photoshop standard format with RGBA channels',
+                icon: Icons.layers,
+                iconColor: const Color(0xFF31A8FF),
+                onChooseLocation: () {
+                  Navigator.of(ctx).pop();
+                  _showDestinationPicker(
+                    context: context,
+                    formatName: 'PSD',
+                    onSaveToFolder: (folder) => ImageUtils.exportAsPsd(
+                      image,
+                      'Artwork',
+                      width: width,
+                      height: height,
+                      customDir: '/storage/emulated/0/$folder/OpenArty',
+                    ),
+                    onShare: () async {
+                      final path = await ImageUtils.exportAsPsd(
+                        image,
+                        'Artwork',
+                        width: width,
+                        height: height,
+                      );
+                      await Share.shareXFiles([XFile(path)], text: 'PSD artwork from OpenArty');
+                      return path;
+                    },
+                  );
+                },
+                onSave: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPsd(
+                    image,
+                    'Artwork',
+                    width: width,
+                    height: height,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Saved PSD to:\n$path')),
+                    );
+                  }
+                },
+                onShare: () async {
+                  Navigator.of(ctx).pop();
+                  final path = await ImageUtils.exportAsPsd(
+                    image,
+                    'Artwork',
+                    width: width,
+                    height: height,
+                  );
+                  await Share.shareXFiles([XFile(path)], text: 'PSD artwork from OpenArty');
                 },
               ),
             ],

@@ -70,7 +70,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
             Text(
-              'OpenCreate needs storage & photos access on your device to:',
+              'OpenArty needs storage & photos access on your device to:',
               style: TextStyle(color: Colors.white70, fontSize: 14),
             ),
             SizedBox(height: 12),
@@ -340,7 +340,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             ),
             const SizedBox(width: 10),
             const Text(
-              'OpenCreate',
+              'OpenArty',
               style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
             ),
           ],
@@ -433,13 +433,28 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                   Expanded(
                                     child: Container(
                                       color: const Color(0xFF181818),
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.image,
-                                          size: 48,
-                                          color: Colors.white24,
-                                        ),
-                                      ),
+                                      child: (project.thumbnailPath != null &&
+                                              File(project.thumbnailPath!)
+                                                  .existsSync())
+                                          ? Image.file(
+                                              File(project.thumbnailPath!),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Center(
+                                                child: Icon(
+                                                  Icons.image,
+                                                  size: 48,
+                                                  color: Colors.white24,
+                                                ),
+                                              ),
+                                            )
+                                          : const Center(
+                                              child: Icon(
+                                                Icons.image,
+                                                size: 48,
+                                                color: Colors.white24,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                   Padding(

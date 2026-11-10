@@ -10,6 +10,9 @@ class LayerItem extends StatelessWidget {
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
   final VoidCallback? onTransform;
+  final VoidCallback? onEditText;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
   final ValueChanged<double> onOpacityChanged;
   final ValueChanged<LayerBlendMode> onBlendModeChanged;
 
@@ -23,6 +26,9 @@ class LayerItem extends StatelessWidget {
     required this.onDuplicate,
     required this.onDelete,
     this.onTransform,
+    this.onEditText,
+    this.onMoveUp,
+    this.onMoveDown,
     required this.onOpacityChanged,
     required this.onBlendModeChanged,
   });
@@ -53,13 +59,37 @@ class LayerItem extends StatelessWidget {
               ),
               onPressed: onToggleVisibility,
             ),
-            title: Text(
-              layer.name,
-              style: TextStyle(
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                color: Colors.white,
-                fontSize: 14,
-              ),
+            title: Row(
+              children: [
+                Icon(
+                  layer.isTextLayer
+                      ? Icons.title
+                      : (layer.layerType == LayerType.image || layer.pixelData != null
+                          ? Icons.image
+                          : (layer.name.startsWith('Gradient')
+                              ? Icons.gradient
+                              : Icons.brush)),
+                  size: 16,
+                  color: layer.isTextLayer
+                      ? const Color(0xFF6C63FF)
+                      : (layer.layerType == LayerType.image || layer.pixelData != null
+                          ? Colors.tealAccent
+                          : Colors.white70),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    layer.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
             subtitle: Text(
               '${layer.blendMode.displayName} • ${(layer.opacity * 100).round()}%',
@@ -68,6 +98,12 @@ class LayerItem extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (layer.isTextLayer)
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 18, color: Color(0xFF6C63FF)),
+                    tooltip: 'Edit Text',
+                    onPressed: onEditText,
+                  ),
                 IconButton(
                   icon: Icon(
                     layer.isLocked ? Icons.lock : Icons.lock_open,
@@ -80,18 +116,52 @@ class LayerItem extends StatelessWidget {
                   icon: const Icon(Icons.more_vert, size: 18, color: Colors.white70),
                   color: const Color(0xFF2C2C2C),
                   onSelected: (val) {
+                    if (val == 'edit_text') onEditText?.call();
                     if (val == 'transform') onTransform?.call();
+                    if (val == 'move_up') onMoveUp?.call();
+                    if (val == 'move_down') onMoveDown?.call();
                     if (val == 'duplicate') onDuplicate();
                     if (val == 'delete') onDelete();
                   },
                   itemBuilder: (ctx) => [
+                    if (layer.isTextLayer)
+                      const PopupMenuItem(
+                        value: 'edit_text',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 18, color: Color(0xFF6C63FF)),
+                            SizedBox(width: 8),
+                            Text('Edit Text', style: TextStyle(color: Colors.white)),
+                          ],
+                        ),
+                      ),
                     const PopupMenuItem(
                       value: 'transform',
                       child: Row(
                         children: [
                           Icon(Icons.open_with, size: 18, color: Colors.white70),
                           SizedBox(width: 8),
-                          Text('Transform / Resize', style: TextStyle(color: Colors.white)),
+                          Text('Move / Transform', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'move_up',
+                      child: Row(
+                        children: [
+                          Icon(Icons.arrow_upward, size: 18, color: Colors.white70),
+                          SizedBox(width: 8),
+                          Text('Place in Front (Up)', style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'move_down',
+                      child: Row(
+                        children: [
+                          Icon(Icons.arrow_downward, size: 18, color: Colors.white70),
+                          SizedBox(width: 8),
+                          Text('Place Behind (Down)', style: TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
