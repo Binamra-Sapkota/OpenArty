@@ -52,7 +52,7 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
     final isStylus = event.kind == PointerDeviceKind.stylus ||
         event.kind == PointerDeviceKind.invertedStylus;
 
-    // 1. Hardware Stylus Pressure
+    // 1. Hardware Stylus Pressure (S-Pen, USI active pen, Apple Pencil)
     if (isStylus &&
         event.pressureMin < event.pressureMax &&
         event.pressure > 0.0) {
@@ -60,35 +60,16 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
       final normalized = range > 0
           ? ((event.pressure - event.pressureMin) / range)
           : event.pressure;
-      _simulatedPressure = normalized.clamp(0.05, 1.0);
-      return _simulatedPressure;
+      return normalized.clamp(0.05, 1.0);
     }
 
-    // Direct hardware pressure if reported
-    if (event.pressure > 0.0 && event.pressure != 1.0) {
-      _simulatedPressure = event.pressure.clamp(0.05, 1.0);
-      return _simulatedPressure;
+    // Direct hardware pressure if reported by active stylus
+    if (isStylus && event.pressure > 0.0 && event.pressure != 1.0) {
+      return event.pressure.clamp(0.05, 1.0);
     }
 
-    // 2. Velocity-based dynamics simulation for touch/finger or non-pressure styluses
-    final now = DateTime.now();
-    if (_lastPointerTime != null && _lastPointerCanvasPos != null) {
-      final dt = now.difference(_lastPointerTime!).inMicroseconds / 1000000.0;
-      if (dt > 0.002) {
-        final dist = (canvasPos - _lastPointerCanvasPos!).distance;
-        final speed = dist / dt; // px per second
-        // Fast speeds (flicks > 1200 px/s) taper to 0.4; slow speeds (< 100 px/s) yield 1.0
-        final factor = (1.0 - (speed / 1800.0)).clamp(0.35, 1.0);
-        // Exponential smoothing filter to prevent jitter
-        _simulatedPressure = (_simulatedPressure * 0.65) + (factor * 0.35);
-      }
-    } else {
-      _simulatedPressure = 0.65; // Natural tapered entry
-    }
-
-    _lastPointerTime = now;
-    _lastPointerCanvasPos = canvasPos;
-    return _simulatedPressure.clamp(0.1, 1.0);
+    // Standard touch/finger input: solid, smooth, consistent line (SketchBook style)
+    return 1.0;
   }
 
   @override

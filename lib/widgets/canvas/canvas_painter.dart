@@ -458,7 +458,7 @@ class CanvasPainter extends CustomPainter {
     if (points.length == 1) {
       canvas.drawCircle(
         points.first.position,
-        math.max(1.0, points.first.size / 2),
+        math.max(1.0, stroke.brushSize / 2),
         Paint()
           ..color = isEraser
               ? Colors.transparent
@@ -469,31 +469,7 @@ class CanvasPainter extends CustomPainter {
       return;
     }
 
-    // Dynamic Pressure Sensitivity Check:
-    // If points have variable pressure/size (from stylus or touch velocity dynamics),
-    // render with smooth variable-width segments for responsive calligraphy and pressure taper
-    final hasVariablePressure = points.length > 2 &&
-        (points.first.size != points.last.size ||
-            points.any((p) => (p.size - stroke.brushSize).abs() > 0.8));
-
-    if (hasVariablePressure) {
-      for (int i = 0; i < points.length - 1; i++) {
-        final p0 = points[i];
-        final p1 = points[i + 1];
-        final segWidth = math.max(1.0, (p0.size + p1.size) / 2);
-        final segOpacity =
-            math.min(1.0, math.max(0.05, (p0.opacity + p1.opacity) / 2));
-
-        paint.strokeWidth = segWidth;
-        if (!isEraser) {
-          paint.color = stroke.color.withValues(alpha: segOpacity);
-        }
-        canvas.drawLine(p0.position, p1.position, paint);
-      }
-      return;
-    }
-
-    // Fast cached path rendering for uniform strokes
+    // Fast cached path rendering for smooth SketchBook-style continuous stroke
     if (stroke.cachedPath != null) {
       canvas.drawPath(stroke.cachedPath!, paint);
       if (symmetryMode != SymmetryMode.none) {
@@ -502,19 +478,24 @@ class CanvasPainter extends CustomPainter {
       return;
     }
 
-    // Build smooth path using quadratic bezier curves
+    // Build smooth continuous path using quadratic bezier spline interpolation.
+    // Rasterizes as a single unified curve (zero dotted joints, zero overlapping beads).
     final path = Path();
     path.moveTo(points.first.position.dx, points.first.position.dy);
 
-    for (int i = 1; i < points.length - 1; i++) {
-      final p0 = points[i].position;
-      final p1 = points[i + 1].position;
-      final midX = (p0.dx + p1.dx) / 2;
-      final midY = (p0.dy + p1.dy) / 2;
-      path.quadraticBezierTo(p0.dx, p0.dy, midX, midY);
+    if (points.length == 2) {
+      path.lineTo(points.last.position.dx, points.last.position.dy);
+    } else {
+      for (int i = 1; i < points.length - 1; i++) {
+        final p0 = points[i].position;
+        final p1 = points[i + 1].position;
+        final midX = (p0.dx + p1.dx) / 2;
+        final midY = (p0.dy + p1.dy) / 2;
+        path.quadraticBezierTo(p0.dx, p0.dy, midX, midY);
+      }
+      path.lineTo(points.last.position.dx, points.last.position.dy);
     }
 
-    path.lineTo(points.last.position.dx, points.last.position.dy);
     stroke.cachedPath = path;
 
     canvas.drawPath(path, paint);
