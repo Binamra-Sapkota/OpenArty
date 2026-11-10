@@ -13,6 +13,7 @@ class LayerItem extends StatelessWidget {
   final VoidCallback? onEditText;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
+  final ValueChanged<String>? onRename;
   final ValueChanged<double> onOpacityChanged;
   final ValueChanged<LayerBlendMode> onBlendModeChanged;
 
@@ -29,6 +30,7 @@ class LayerItem extends StatelessWidget {
     this.onEditText,
     this.onMoveUp,
     this.onMoveDown,
+    this.onRename,
     required this.onOpacityChanged,
     required this.onBlendModeChanged,
   });
@@ -116,6 +118,7 @@ class LayerItem extends StatelessWidget {
                   icon: const Icon(Icons.more_vert, size: 18, color: Colors.white70),
                   color: const Color(0xFF2C2C2C),
                   onSelected: (val) {
+                    if (val == 'rename') _showRenameDialog(context);
                     if (val == 'edit_text') onEditText?.call();
                     if (val == 'transform') onTransform?.call();
                     if (val == 'move_up') onMoveUp?.call();
@@ -124,6 +127,18 @@ class LayerItem extends StatelessWidget {
                     if (val == 'delete') onDelete();
                   },
                   itemBuilder: (ctx) => [
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(Icons.drive_file_rename_outline,
+                              size: 18, color: Colors.white70),
+                          SizedBox(width: 8),
+                          Text('Rename Layer',
+                              style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
                     if (layer.isTextLayer)
                       const PopupMenuItem(
                         value: 'edit_text',
@@ -244,6 +259,50 @@ class LayerItem extends StatelessWidget {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context) {
+    final controller = TextEditingController(text: layer.name);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Rename Layer',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          decoration: const InputDecoration(
+            labelText: 'Layer Name',
+            labelStyle: TextStyle(color: Colors.white70),
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white38)),
+            focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF6C63FF), width: 2)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF)),
+            onPressed: () {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                onRename?.call(newName);
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );

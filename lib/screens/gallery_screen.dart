@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/project_model.dart';
 import '../models/canvas_model.dart';
@@ -138,11 +139,25 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     }
   }
 
+  Future<void> _launchWebUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open link: $url')),
+        );
+      }
+    }
+  }
+
   void _createNewArtwork({
     int width = 1080,
     int height = 1080,
     int dpi = 150,
     String name = 'Untitled',
+    Color backgroundColor = Colors.white,
   }) {
     final newProject = ProjectModel(
       id: _uuid.v4(),
@@ -165,6 +180,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             width: width,
             height: height,
             dpi: dpi,
+            backgroundColor: backgroundColor,
           ),
         ),
       ),
@@ -180,158 +196,267 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     final heightController = TextEditingController(text: '1080');
     final dpiController = TextEditingController(text: '150');
     final nameController = TextEditingController(text: 'Custom Artwork');
+    Color selectedBgColor = Colors.white;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF282828),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('New Canvas / Dimensions',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Artwork Name',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF282828),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('New Canvas / Dimensions',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Artwork Name',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: widthController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Width (px)',
-                        labelStyle: TextStyle(color: Colors.white70),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widthController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Width (px)',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextField(
-                      controller: heightController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Height (px)',
-                        labelStyle: TextStyle(color: Colors.white70),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextField(
+                        controller: heightController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Height (px)',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: dpiController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Resolution (DPI)',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white24),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dpiController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Resolution (DPI)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              // Preset chips
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  ActionChip(
-                    label: const Text('1:1 Square', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '1080';
-                      heightController.text = '1080';
-                    },
+                const SizedBox(height: 16),
+                // Preset chips
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    ActionChip(
+                      label: const Text('1:1 Square', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '1080';
+                          heightController.text = '1080';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('16:9 Landscape', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '1920';
+                          heightController.text = '1080';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('9:16 Portrait', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '1080';
+                          heightController.text = '1920';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('4:3 Classic', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '1600';
+                          heightController.text = '1200';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('4K UHD', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '3840';
+                          heightController.text = '2160';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('A4 Print', style: TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        setDialogState(() {
+                          widthController.text = '2480';
+                          heightController.text = '3508';
+                          dpiController.text = '300';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Canvas Background:',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
                   ),
-                  ActionChip(
-                    label: const Text('16:9 Landscape', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '1920';
-                      heightController.text = '1080';
-                    },
-                  ),
-                  ActionChip(
-                    label: const Text('9:16 Portrait', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '1080';
-                      heightController.text = '1920';
-                    },
-                  ),
-                  ActionChip(
-                    label: const Text('4:3 Classic', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '1600';
-                      heightController.text = '1200';
-                    },
-                  ),
-                  ActionChip(
-                    label: const Text('4K UHD', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '3840';
-                      heightController.text = '2160';
-                    },
-                  ),
-                  ActionChip(
-                    label: const Text('A4 Print', style: TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      widthController.text = '2480';
-                      heightController.text = '3508';
-                      dpiController.text = '300';
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6C63FF),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    // 1. Transparent
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.grid_on, size: 14, color: Colors.white70),
+                          SizedBox(width: 4),
+                          Text('Transparent', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      selected: selectedBgColor == Colors.transparent,
+                      selectedColor: const Color(0xFF6C63FF),
+                      onSelected: (sel) {
+                        if (sel) {
+                          setDialogState(() => selectedBgColor = Colors.transparent);
+                        }
+                      },
+                    ),
+                    // 2. White
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircleAvatar(radius: 6, backgroundColor: Colors.white),
+                          SizedBox(width: 6),
+                          Text('White', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      selected: selectedBgColor == Colors.white,
+                      selectedColor: const Color(0xFF6C63FF),
+                      onSelected: (sel) {
+                        if (sel) {
+                          setDialogState(() => selectedBgColor = Colors.white);
+                        }
+                      },
+                    ),
+                    // 3. Black
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircleAvatar(
+                            radius: 6,
+                            backgroundColor: Colors.black,
+                            child: CircleAvatar(radius: 5, backgroundColor: Colors.white24),
+                          ),
+                          SizedBox(width: 6),
+                          Text('Black', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      selected: selectedBgColor == Colors.black,
+                      selectedColor: const Color(0xFF6C63FF),
+                      onSelected: (sel) {
+                        if (sel) {
+                          setDialogState(() => selectedBgColor = Colors.black);
+                        }
+                      },
+                    ),
+                    // 4. Cream / Warm
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircleAvatar(radius: 6, backgroundColor: Color(0xFFFFFDD0)),
+                          SizedBox(width: 6),
+                          Text('Cream', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      selected: selectedBgColor.value == const Color(0xFFFFFDD0).value,
+                      selectedColor: const Color(0xFF6C63FF),
+                      onSelected: (sel) {
+                        if (sel) {
+                          setDialogState(() => selectedBgColor = const Color(0xFFFFFDD0));
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
             ),
-            child: const Text('Create Canvas', style: TextStyle(color: Colors.white)),
-            onPressed: () {
-              final w = int.tryParse(widthController.text) ?? 1080;
-              final h = int.tryParse(heightController.text) ?? 1080;
-              final dpi = int.tryParse(dpiController.text) ?? 150;
-              final name = nameController.text.trim().isEmpty
-                  ? 'Custom Artwork'
-                  : nameController.text.trim();
-              Navigator.of(ctx).pop();
-              _createNewArtwork(
-                width: w.clamp(100, 8192),
-                height: h.clamp(100, 8192),
-                dpi: dpi,
-                name: name,
-              );
-            },
           ),
-        ],
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Create Canvas', style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                final w = int.tryParse(widthController.text) ?? 1080;
+                final h = int.tryParse(heightController.text) ?? 1080;
+                final dpi = int.tryParse(dpiController.text) ?? 150;
+                final name = nameController.text.trim().isEmpty
+                    ? 'Custom Artwork'
+                    : nameController.text.trim();
+                Navigator.of(ctx).pop();
+                _createNewArtwork(
+                  width: w.clamp(100, 8192),
+                  height: h.clamp(100, 8192),
+                  dpi: dpi,
+                  name: name,
+                  backgroundColor: selectedBgColor,
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -365,7 +490,19 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add, color: Colors.white),
+            icon: const Icon(Icons.code, color: Colors.white70),
+            tooltip: 'GitHub Repository',
+            onPressed: () =>
+                _launchWebUrl('https://github.com/Binamra-Sapkota/OpenCreate'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.language, color: Colors.white70),
+            tooltip: 'binamrasapkota.com.np',
+            onPressed: () => _launchWebUrl('https://binamrasapkota.com.np'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle,
+                color: Color(0xFF6C63FF), size: 26),
             tooltip: 'New Canvas',
             onPressed: _showNewCanvasDialog,
           ),

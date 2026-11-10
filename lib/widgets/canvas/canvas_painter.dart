@@ -572,8 +572,8 @@ class CanvasPainter extends CustomPainter {
 
   void _drawGrid(Canvas canvas, double width, double height) {
     final paint = Paint()
-      ..color = Colors.cyanAccent.withValues(alpha: 0.18)
-      ..strokeWidth = 0.5
+      ..color = Colors.black.withValues(alpha: 0.70)
+      ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
     for (double x = 0; x <= width; x += gridSize) {

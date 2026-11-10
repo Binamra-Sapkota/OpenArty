@@ -98,10 +98,16 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             widget.project?.canvasHeight ??
             1080;
 
+        final bgColorVal = savedData['backgroundColor'] as int?;
+        final bgColor = bgColorVal != null
+            ? Color(bgColorVal)
+            : (widget.initialCanvas?.backgroundColor ?? Colors.white);
+
         final canvasModel = CanvasModel(
           width: w,
           height: h,
           dpi: widget.project?.dpi ?? 150,
+          backgroundColor: bgColor,
         );
 
         ref.read(layerProvider.notifier).setLayers(layers, activeLayerId);
@@ -149,9 +155,28 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
 
   void _startAutoSaveTimer() {
     _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _autoSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _saveArtworkNow();
     });
+  }
+
+  Future<void> _manualSaveArtwork() async {
+    await _saveArtworkNow();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+              SizedBox(width: 10),
+              Text('Artwork saved successfully!'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: Color(0xFF2C2C2C),
+        ),
+      );
+    }
   }
 
   Future<void> _saveArtworkNow() async {
@@ -173,6 +198,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         activeLayerId: layerState.activeLayerId,
         canvasWidth: canvasW,
         canvasHeight: canvasH,
+        backgroundColor: canvasState.canvas.backgroundColor,
         historyUndoStack: canvasState.historyUndoStack,
         historyRedoStack: canvasState.historyRedoStack,
       );
@@ -210,6 +236,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         activeLayerId: layerState.activeLayerId,
         canvasWidth: canvasW,
         canvasHeight: canvasH,
+        backgroundColor: canvasState.canvas.backgroundColor,
         historyUndoStack: canvasState.historyUndoStack,
         historyRedoStack: canvasState.historyRedoStack,
       );
@@ -284,11 +311,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final layerState = ref.watch(layerProvider);
 
     return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) {
-        _saveArtworkDirectly();
-        if (Hive.isBoxOpen('settings')) {
-          Hive.box('settings').delete('last_opened_project_id');
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _saveArtworkNow();
+        if (context.mounted) {
+          Navigator.of(context).pop();
         }
       },
       child: Scaffold(
@@ -311,6 +339,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                         if (_isLayerPanelOpen) _isBrushPanelOpen = false;
                       });
                     },
+                    onManualSave: _manualSaveArtwork,
                     isBrushPanelOpen: _isBrushPanelOpen,
                     isLayerPanelOpen: _isLayerPanelOpen,
                   ),

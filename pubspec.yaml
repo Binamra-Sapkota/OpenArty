@@ -26,6 +26,7 @@ dependencies:
   # File/sharing
   share_plus: ^10.1.4
   permission_handler: ^11.3.0
+  url_launcher: ^6.3.0
 
   # UI / color picking
   flutter_colorpicker: ^1.0.3

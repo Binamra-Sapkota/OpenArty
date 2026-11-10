@@ -669,6 +669,7 @@ class ImageUtils {
     required String activeLayerId,
     required int canvasWidth,
     required int canvasHeight,
+    Color? backgroundColor,
     List<CanvasHistoryEntry>? historyUndoStack,
     List<CanvasHistoryEntry>? historyRedoStack,
   }) async {
@@ -679,6 +680,7 @@ class ImageUtils {
       'activeLayerId': activeLayerId,
       'canvasWidth': canvasWidth,
       'canvasHeight': canvasHeight,
+      'backgroundColor': (backgroundColor ?? Colors.white).value,
       'layers': layers.map((l) => l.toJson()).toList(),
       'committedStrokes': committedStrokes.map(
         (key, strokes) =>

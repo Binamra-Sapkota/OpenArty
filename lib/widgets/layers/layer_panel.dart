@@ -226,6 +226,8 @@ class LayerPanel extends ConsumerWidget {
                       onClose?.call();
                     },
                     onEditText: () => _showEditTextDialog(context, ref, layer),
+                    onRename: (newName) =>
+                        layerNotifier.renameLayer(layer.id, newName),
                     onMoveUp: () => layerNotifier.moveLayerUp(layer.id),
                     onMoveDown: () => layerNotifier.moveLayerDown(layer.id),
                     onOpacityChanged: (v) => layerNotifier.setOpacity(layer.id, v),

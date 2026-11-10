@@ -18,6 +18,7 @@ import '../../utils/image_utils.dart';
 class TopToolbar extends ConsumerWidget {
   final VoidCallback onToggleBrushPanel;
   final VoidCallback onToggleLayerPanel;
+  final VoidCallback? onManualSave;
   final bool isBrushPanelOpen;
   final bool isLayerPanelOpen;
 
@@ -25,6 +26,7 @@ class TopToolbar extends ConsumerWidget {
     super.key,
     required this.onToggleBrushPanel,
     required this.onToggleLayerPanel,
+    this.onManualSave,
     required this.isBrushPanelOpen,
     required this.isLayerPanelOpen,
   });
@@ -56,7 +58,7 @@ class TopToolbar extends ConsumerWidget {
                 tooltip: 'Gallery',
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
 
               // Title shown only on wider screens/tablets
@@ -206,12 +208,16 @@ class TopToolbar extends ConsumerWidget {
                   ),
                   const PopupMenuDivider(),
                   const PopupMenuItem(
-                    value: 'canvas_props',
+                    value: 'save_artwork',
                     child: Row(
                       children: [
-                        Icon(Icons.tune, color: Colors.white70, size: 18),
+                        Icon(Icons.save_outlined,
+                            color: Color(0xFF6C63FF), size: 18),
                         SizedBox(width: 10),
-                        Text('Canvas Properties', style: TextStyle(color: Colors.white)),
+                        Text('Save Artwork',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -260,8 +266,8 @@ class TopToolbar extends ConsumerWidget {
       case 'stylus_only':
         canvasNotifier.toggleStylusOnlyMode();
         break;
-      case 'canvas_props':
-        _showCanvasPropsDialog(context, ref);
+      case 'save_artwork':
+        onManualSave?.call();
         break;
       case 'clear_layer':
         _confirmClear(context, canvasNotifier, layerState.activeLayerId);
