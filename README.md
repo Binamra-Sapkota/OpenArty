@@ -1,11 +1,11 @@
 # OpenArty 🎨
 
-[![Release](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/Binamra-Sapkota/OpenCreate/releases)
-[![Direct APK Download](https://img.shields.io/badge/Download-Direct%20APK-brightgreen.svg?logo=android)](https://github.com/Binamra-Sapkota/OpenCreate/releases/download/v1.1.0/app-release.apk)
+[![Release](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/Binamra-Sapkota/OpenArty/releases)
+[![Direct APK Download](https://img.shields.io/badge/Download-Direct%20APK-brightgreen.svg?logo=android)](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20(API%2021%2B)-success.svg)](https://flutter.dev)
 
-> **[Direct APK Download Link: Click Here to Download OpenArty v1.1.0 APK](https://github.com/Binamra-Sapkota/OpenCreate/releases/download/v1.1.0/app-release.apk)**
+> **[Direct APK Download Link: Click Here to Download OpenArty v1.1.0 APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)**
 
 **OpenArty** is a completely free, lightweight, privacy-focused, open-source digital painting, sketch, and vector illustration app built with Flutter. It combines the ergonomic, minimal touch interface of **Autodesk SketchBook** with the powerful multi-layer, blending mode, and vector styling capabilities of **Procreate**.
 
@@ -17,41 +17,44 @@ Designed specifically for smartphones, foldables, and tablets, OpenArty is engin
 
 You can download and install the latest release directly onto any Android device:
 
-- **Direct Download**: **[OpenArty v1.1.0 Release APK](https://github.com/Binamra-Sapkota/OpenCreate/releases/download/v1.1.0/app-release.apk)**
-- **All Releases & Source**: [GitHub Releases Page](https://github.com/Binamra-Sapkota/OpenCreate/releases)
+- **Direct Download**: **[OpenArty v1.1.0 Release APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)**
+- **All Releases & Source**: [GitHub Releases Page](https://github.com/Binamra-Sapkota/OpenArty/releases)
 
 ---
 
 ## ✨ Key Features
 
-### ⚡ Zero-Lag Drawing Engine & High Performance
-- **Sub-Pixel Distance Optimization**: Continuous brush strokes no longer lag or drop frames, even when painting uninterrupted for hours without lifting your finger or stylus.
+### ⚡ Smooth Continuous Strokes & Zero-Lag Drawing Engine
+- **SketchBook-Style Smooth Continuous Splines**: Freehand strokes are rendered as seamless, continuous quadratic Bezier paths with no dotted joined-line artifacts.
+- **Sub-Pixel Distance Optimization**: Continuous brush strokes remain fluid and responsive without lagging or dropping frames, even when painting uninterrupted for hours.
 - **Pre-Cached Vector Rendering**: In-memory path caching guarantees smooth 60fps / 120Hz display refresh on mobile screens.
 - **Lightweight Footprint**: Highly optimized bundle with zero bloat and near-instant cold startup time.
 
 ### ✍️ Stylus & Dynamic Pressure Sensitivity
-- **Hardware Stylus Pressure**: Full dynamic pressure sensing on Samsung S-Pen, Apple Pencil, USI styluses, and Wacom-compatible active styluses.
-- **Velocity Dynamics Simulation**: When drawing with fingers or non-pressure styluses, OpenArty simulates authentic ink flow and calligraphic tapering based on movement speed.
-- **Pressure Dynamics Switch**: Toggle dynamic pressure scaling on/off in the Brush Studio.
+- **Hardware Stylus Pressure**: Dynamic hardware pressure sensing for Samsung S-Pen, Apple Pencil, USI styluses, and Wacom-compatible active pens.
+- **Clean Consistent Touch Linework**: Touch and finger drawing produces clean, uniform strokes without velocity jitter or joint bead artifacts.
+- **Pressure Dynamics Switch**: Easily toggle dynamic pressure scaling on or off directly in the Brush Studio.
 
 ### 🖌️ Versatile Brush Studio
 - **Curated Presets**: HB Pencil, Technical Pencil, Hard Round Brush, Soft Airbrush, Marker, Calligraphy Ink Pen, Watercolor, Charcoal, Oil Pastel, Smudge Tool, Precision Eraser, and Soft Eraser.
 - **Deep Parameter Control**: Customize Brush Size (1px – 500px), Opacity (1% – 100%), Hardness, Spacing, and Streamline Stabilization.
 - **Streamline Stabilization**: Built-in jitter cancellation algorithm for silky-smooth linework.
-- **Seamless Brush-to-Eraser Switching**: Switch back and forth between drawing tools and the eraser without state loss.
+- **Seamless Brush-to-Eraser Switching**: Switch back and forth between drawing tools and the eraser with automatic state restoration.
 
-### 🎚️ Floating Canvas Quick-Sliders
-- Floating vertical size and opacity sliders docked directly to the screen margin for instant one-thumb adjustment.
-- Real-time visual feedback pill displaying live pixel dimensions, opacity percentage, and color swatch preview.
+### 🎚️ Top-Docked Movable Quick-Sliders with Keyboard Input
+- **Top-Docked Movable Pill Bar**: Brush size and opacity sliders are docked at the top of the canvas in a compact horizontal pill bar with a drag handle to position anywhere.
+- **Numeric Keyboard Direct Input**: Tap the size (`24px ⌨`) or opacity (`100% ⌨`) chips to enter precise values via your mobile keyboard.
 
-### 🎨 Circular HSV Color Studio
-- **HSV Color Wheel**: Precision hue sweep circle, saturation/value picker, and transparency slider.
+### 🎨 Rectangular Color Studio & Swatches
+- **Rectangular Color Selector**: Large Saturation-Value 2D gradient box with draggable crosshair, rainbow Hue spectrum slider, and checkerboard Alpha transparency slider.
+- **Hex & RGB Direct Input**: Tap to view and edit exact Hex codes or RGB sliders via mobile keyboard.
 - **Color History & Swatches**: 12 curated default swatches + automatic 16-color recent palette history.
 - **Foreground / Background Color Swapping**: Instant two-color toggling for shading and inking.
 - **Interactive Eyedropper**: Sample color directly from any layer, stroke, or imported image.
 
-### 📑 Multi-Layer Studio
+### 📑 Multi-Layer Studio & Universal Renaming
 - **Unlimited Layers**: Create, duplicate, reorder, delete, hide/show, and rename layers.
+- **Universal Layer Renaming**: Rename any layer at any time—including standard brush, gradient, image, and text layers.
 - **17 Blending Modes**: Normal, Multiply, Screen, Overlay, Darken, Lighten, Color Dodge, Color Burn, Hard Light, Soft Light, Difference, Exclusion, and more.
 - **Layer Locks**: Per-layer Alpha Lock and Editing Lock to protect critical linework.
 - **Merge Operations**: Merge down and merge all visible layers into a single composite layer.
@@ -77,12 +80,18 @@ Draw crisp vector shapes with either outline stroke or solid fill:
 - **Move & Transform Tool**: Move, reposition, and scale text and image layers dynamically. Re-edit text anytime.
 
 ### 🎨 Customizable Gradients & Flood Fill Bucket
-- **Customizable Gradients**: Create linear and radial gradients with customizable colors and transparency.
+- **Customizable Gradients**: Create linear and radial gradients with customizable colors and transparency across multiple layers.
 - **Flood Fill Bucket**: Fill enclosed contours or entire layers with tolerance control.
 
-### 💾 Auto-Save & Unified Cross-Session Undo/Redo
-- **Continuous Auto-Save**: Your artwork automatically persists every 5 seconds. If you exit or switch apps, OpenArty restores your exact canvas upon return.
+### 💾 10-Second Auto-Save & Manual Save Option
+- **Continuous 10-Second Auto-Save**: Your artwork automatically persists every 10 seconds.
+- **Safe Exit Interception**: Navigating away or quitting automatically saves project state and background settings asynchronously before closing so no work is ever lost.
+- **Manual Save Option**: Tap `Save Artwork` in the 3-dot overflow menu for immediate manual confirmation.
 - **Persistent Cross-Session Undo/Redo**: Undo and redo history across strokes, layers, text, and gradients is preserved across app sessions.
+
+### 🏁 Transparent Canvas & Background Colors
+- **Canvas Background Selection**: Choose between Transparent, White, Black, or Cream background when creating new canvases.
+- **High-Contrast Black Grid**: Crisp, clear black grid lines for precision drawing and layout alignment.
 
 ### 🖼️ Floating Reference Image Overlay
 - Import reference images from device storage without baking them into your artwork.
@@ -117,8 +126,8 @@ Export your creations with a single tap into professional raster and vector form
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Binamra-Sapkota/OpenCreate.git
-   cd OpenCreate
+   git clone https://github.com/Binamra-Sapkota/OpenArty.git
+   cd OpenArty
    ```
 
 2. **Install dependencies:**
@@ -149,3 +158,4 @@ Export your creations with a single tap into professional raster and vector form
 ## 📄 License
 
 OpenArty is released under the **MIT License**. You are free to inspect, modify, fork, and distribute this software.
+

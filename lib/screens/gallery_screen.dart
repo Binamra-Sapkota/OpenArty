@@ -493,7 +493,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             icon: const Icon(Icons.code, color: Colors.white70),
             tooltip: 'GitHub Repository',
             onPressed: () =>
-                _launchWebUrl('https://github.com/Binamra-Sapkota/OpenCreate'),
+                _launchWebUrl('https://github.com/Binamra-Sapkota/OpenArty'),
           ),
           IconButton(
             icon: const Icon(Icons.language, color: Colors.white70),

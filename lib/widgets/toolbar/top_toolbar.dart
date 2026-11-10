@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image/image.dart' as img;
-import '../../models/canvas_model.dart';
 import '../../providers/canvas_provider.dart';
 import '../../providers/layer_provider.dart';
 import '../../providers/brush_provider.dart';
@@ -279,9 +278,11 @@ class TopToolbar extends ConsumerWidget {
     try {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(source: ImageSource.gallery);
-      if (file != null && context.mounted) {
+      if (file != null) {
         final bytes = await file.readAsBytes();
-        await _showImageCropDialog(context, bytes, file.name, ref);
+        if (context.mounted) {
+          await _showImageCropDialog(context, bytes, file.name, ref);
+        }
       }
     } catch (e) {
       if (context.mounted) {
@@ -532,79 +533,7 @@ class TopToolbar extends ConsumerWidget {
     );
   }
 
-  void _showCanvasPropsDialog(BuildContext context, WidgetRef ref) {
-    final canvasState = ref.read(canvasProvider);
-    final canvas = canvasState.canvas;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text('Canvas Properties', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Dimensions: ${canvas.width} × ${canvas.height} px',
-                style: const TextStyle(color: Colors.white70)),
-            const SizedBox(height: 8),
-            Text('Resolution: ${canvas.dpi} DPI',
-                style: const TextStyle(color: Colors.white70)),
-            const SizedBox(height: 16),
-            const Text('Background Color:',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _bgColorOption(ctx, ref, Colors.transparent, 'Transparent', Icons.grid_view),
-                const SizedBox(width: 8),
-                _bgColorOption(ctx, ref, Colors.white, 'White', Icons.square),
-                const SizedBox(width: 8),
-                _bgColorOption(ctx, ref, Colors.black, 'Black', Icons.square),
-                const SizedBox(width: 8),
-                _bgColorOption(ctx, ref, const Color(0xFFF0EBE1), 'Warm', Icons.square),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Close'),
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bgColorOption(
-      BuildContext context, WidgetRef ref, Color color, String tooltip, IconData icon) {
-    return GestureDetector(
-      onTap: () {
-        final current = ref.read(canvasProvider).canvas;
-        final updated = CanvasModel(
-          width: current.width,
-          height: current.height,
-          dpi: current.dpi,
-          backgroundColor: color,
-        );
-        ref.read(canvasProvider.notifier).setCanvas(updated);
-        Navigator.of(context).pop();
-      },
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: color == Colors.transparent ? Colors.grey[800] : color,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white38),
-        ),
-        child: color == Colors.transparent
-            ? const Icon(Icons.grid_view, size: 16, color: Colors.white70)
-            : null,
-      ),
-    );
-  }
 
   void _confirmClear(
       BuildContext context, CanvasNotifier notifier, String layerId) {
