@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/badge/Release-v1.1-blue.svg)](https://github.com/Binamra-Sapkota/OpenArty/releases)
 [![Direct APK Download](https://img.shields.io/badge/Download-Direct%20APK-brightgreen.svg?logo=android)](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1/app-release.apk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Free Non-Commercial](https://img.shields.io/badge/License-Free%20Non--Commercial-blue.svg)](LICENSE.md)
 [![Platform](https://img.shields.io/badge/Platform-Android%20(API%2021%2B)-success.svg)](https://flutter.dev)
 
 > **[Direct APK Download Link: Click Here to Download OpenArty v1.1 APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1/app-release.apk)**
@@ -160,7 +160,10 @@ Export your creations with a single tap into professional raster and vector form
 
 ---
 
-## 📄 License
+## 📄 License & Terms
 
-OpenArty is released under the **MIT License**. You are free to inspect, modify, fork, and distribute this software.
+OpenArty is free and open-source software distributed under the terms of [LICENSE.md](LICENSE.md).
+
+- **Free to Use, Modify, and Fork**: You can freely use, study, customize, create derivative works, and distribute your own versions for free.
+- **Strictly Non-Commercial / Cannot Be Sold**: You **cannot** sell this app, charge for downloads, or make paid versions by customizing this source code. Any derivative works or distributions must remain 100% free of charge.
 
