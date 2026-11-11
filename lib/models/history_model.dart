@@ -17,7 +17,7 @@ class CanvasHistoryEntry {
         'committedStrokes': committedStrokes.map(
           (k, v) => MapEntry(k, v.map((s) => s.toJson()).toList()),
         ),
-        'layers': layers.map((l) => l.toJson()).toList(),
+        'layers': layers.map((l) => l.toJson(includePixelData: false)).toList(),
         'activeLayerId': activeLayerId,
       };
 

@@ -257,11 +257,14 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     );
   }
 
+  /// Maximum number of undo history states kept in memory to guarantee 2GB-3GB RAM compatibility
+  static const int maxHistoryStates = 20;
+
   /// Records a full document history snapshot before modifying strokes, layers, text, or gradients
   void recordSnapshot() {
     final snapshot = _createCurrentSnapshot();
     final newUndo = [...state.historyUndoStack, snapshot];
-    if (newUndo.length > 50) {
+    if (newUndo.length > maxHistoryStates) {
       newUndo.removeAt(0);
     }
     state = state.copyWith(
@@ -995,6 +998,9 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       final newUndo = [...state.historyUndoStack];
       final target = newUndo.removeLast();
       final newRedo = [...state.historyRedoStack, currentSnapshot];
+      if (newRedo.length > maxHistoryStates) {
+        newRedo.removeAt(0);
+      }
 
       _ref?.read(layerProvider.notifier).setLayers(
             target.layers,
@@ -1035,6 +1041,9 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       final newRedo = [...state.historyRedoStack];
       final target = newRedo.removeLast();
       final newUndo = [...state.historyUndoStack, currentSnapshot];
+      if (newUndo.length > maxHistoryStates) {
+        newUndo.removeAt(0);
+      }
 
       _ref?.read(layerProvider.notifier).setLayers(
             target.layers,

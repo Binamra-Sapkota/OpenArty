@@ -40,6 +40,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   bool _isLayerPanelOpen = false;
   Timer? _autoSaveTimer;
   bool _isSaving = false;
+  bool _hasUnsavedChanges = false;
   late String _effectiveProjectId;
   late String _effectiveProjectName;
 
@@ -189,9 +190,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
 
   void _startAutoSaveTimer() {
     _autoSaveTimer?.cancel();
-    // Save everything automatically every 8 seconds
+    // Non-blocking asynchronous save every 8 seconds when changes occur
     _autoSaveTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-      _saveArtworkNow();
+      if (_hasUnsavedChanges && !_isSaving) {
+        _saveArtworkNow(updateThumbnail: false);
+      }
     });
   }
 
@@ -339,7 +342,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
   }
 
-  Future<void> _saveArtworkNow() async {
+  Future<void> _saveArtworkNow({bool updateThumbnail = true}) async {
     if (_isSaving || !mounted) return;
     _isSaving = true;
     try {
@@ -351,20 +354,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       final canvasW = canvasState.canvas.width;
       final canvasH = canvasState.canvas.height;
 
-      // 1. Synchronous flush for immediate persistence
-      ImageUtils.saveProjectDataSync(
-        projectId: projectId,
-        layers: layerState.layers,
-        committedStrokes: canvasState.committedStrokes,
-        activeLayerId: layerState.activeLayerId,
-        canvasWidth: canvasW,
-        canvasHeight: canvasH,
-        backgroundColor: canvasState.canvas.backgroundColor,
-        historyUndoStack: canvasState.historyUndoStack,
-        historyRedoStack: canvasState.historyRedoStack,
-      );
-
-      // 2. Async verified write
+      // Asynchronous non-blocking write to disk
       await ImageUtils.saveProjectData(
         projectId: projectId,
         layers: layerState.layers,
@@ -377,7 +367,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         historyRedoStack: canvasState.historyRedoStack,
       );
 
-      // 3. Register and update Hive project model
+      _hasUnsavedChanges = false;
+
+      // Register and update Hive project model
       if (Hive.isBoxOpen('projects')) {
         final box = Hive.box<ProjectModel>('projects');
         var p = box.get(projectId);
@@ -407,9 +399,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         Hive.box('settings').put('last_opened_project_id', projectId);
       }
 
-      // 4. Save thumbnail
-      await _saveProjectThumbnail(
-          projectId, canvasW, canvasH, layerState, canvasState);
+      // Fast hardware-accelerated thumbnail generation when requested
+      if (updateThumbnail) {
+        await _saveProjectThumbnail(
+            projectId, canvasW, canvasH, layerState, canvasState);
+      }
     } catch (e) {
       debugPrint('Auto-save error: $e');
     } finally {
@@ -530,12 +524,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       },
     );
 
-    // Synchronously flush changes to disk on stroke completion or layer changes
+    // Track unsaved changes for non-blocking debounced auto-saving
     ref.listen<Map<String, List<DrawStroke>>>(
       canvasProvider.select((s) => s.committedStrokes),
       (prev, next) {
         if (prev != null && prev != next) {
-          _saveArtworkDirectly();
+          _hasUnsavedChanges = true;
         }
       },
     );
@@ -543,11 +537,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       layerProvider.select((s) => s.layers),
       (prev, next) {
         if (prev != null && prev != next) {
-          // Do not write synchronously to disk during interactive gesture transforms
-          final isTransforming = ref.read(canvasProvider).activeTool == DrawingTool.transform;
-          if (!isTransforming) {
-            _saveArtworkDirectly();
-          }
+          _hasUnsavedChanges = true;
         }
       },
     );

@@ -211,7 +211,7 @@ class LayerModel {
     );
   }
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson({bool includePixelData = true}) => {
         'id': id,
         'name': name,
         'layerType': layerType.index,
@@ -227,7 +227,7 @@ class LayerModel {
         'offsetY': offsetY,
         'scale': scale,
         'rotation': rotation,
-        'pixelData': pixelData != null ? base64Encode(pixelData!) : null,
+        'pixelData': (includePixelData && pixelData != null) ? base64Encode(pixelData!) : null,
         'textContent': textContent,
         'fontSize': fontSize,
         'textColor': textColor?.toARGB32(),

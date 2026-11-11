@@ -150,9 +150,13 @@ Export your creations with a single tap into professional raster and vector form
 
 ## 📱 Hardware & Platform Support
 
-- **Android**: Android 5.0 (Lollipop) through Android 16 (API 36).
+- **RAM Requirements**:
+  - **Minimum**: 2 GB RAM
+  - **Recommended**: 3 GB RAM or higher
+- **Android**: Android 5.0 (Lollipop, API 21) through Android 16 (API 36).
+- **Engine Optimization**: Low memory footprint (~80–120 MB RAM), hardware-accelerated Skia/Impeller rendering pipeline, debounced non-blocking background persistence, and `largeHeap` configuration for zero-lag drawing on entry-level devices.
 - **Tablets & Foldables**: Responsive layout that dynamically adjusts toolbar items and hides/expands panels based on available screen width.
-- **Stylus Input**: Supports Samsung S-Pen, active USI pens, and capacitive touch styluses.
+- **Stylus Input**: Supports Samsung S-Pen, active USI pens, Apple Pencil, and capacitive touch styluses.
 
 ---
 

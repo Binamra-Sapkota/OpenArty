@@ -43,11 +43,10 @@ class CanvasPainter extends CustomPainter {
     // Clip to canvas bounds
     canvas.clipRect(Rect.fromLTWH(0, 0, canvasWidth, canvasHeight));
 
-    // Draw checkerboard for transparency
-    _drawCheckerboard(canvas, canvasWidth, canvasHeight);
-
-    // Draw background color if not transparent
-    if (canvasState.canvas.backgroundColor != Colors.transparent) {
+    // Draw checkerboard for transparency only when canvas background is transparent
+    if (canvasState.canvas.backgroundColor == Colors.transparent) {
+      _drawCheckerboard(canvas, canvasWidth, canvasHeight);
+    } else {
       canvas.drawRect(
         Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
         Paint()..color = canvasState.canvas.backgroundColor,
@@ -58,14 +57,18 @@ class CanvasPainter extends CustomPainter {
     for (final layer in layers.reversed) {
       if (!layer.isVisible) continue;
 
-      final layerPaint = Paint()
-        ..blendMode = layer.blendMode.flutterBlendMode
-        ..color = Colors.white.withValues(alpha: layer.opacity);
+      // Only allocate an expensive off-screen saveLayer buffer if blend mode or opacity requires compositing
+      final needsSaveLayer = layer.opacity < 0.999 || layer.blendMode != LayerBlendMode.normal;
+      if (needsSaveLayer) {
+        final layerPaint = Paint()
+          ..blendMode = layer.blendMode.flutterBlendMode
+          ..color = Colors.white.withValues(alpha: layer.opacity);
 
-      canvas.saveLayer(
-        Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
-        layerPaint,
-      );
+        canvas.saveLayer(
+          Rect.fromLTWH(0, 0, canvasWidth, canvasHeight),
+          layerPaint,
+        );
+      }
 
       // Apply layer transformation (move, scale, rotate)
       canvas.save();
@@ -153,7 +156,9 @@ class CanvasPainter extends CustomPainter {
       }
 
       canvas.restore(); // restore layer transform
-      canvas.restore(); // restore saveLayer
+      if (needsSaveLayer) {
+        canvas.restore(); // restore saveLayer
+      }
     }
 
     // Grid overlay
@@ -168,23 +173,28 @@ class CanvasPainter extends CustomPainter {
   }
 
   void _drawCheckerboard(Canvas canvas, double width, double height) {
-    const squareSize = 20.0;
+    const squareSize = 32.0;
     final paint1 = Paint()..color = const Color(0xFF282828);
     final paint2 = Paint()..color = const Color(0xFF323232);
+
+    // Single background fill
+    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), paint1);
 
     final cols = (width / squareSize).ceil();
     final rows = (height / squareSize).ceil();
 
+    // Only draw the contrasting squares
     for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        final isEven = (row + col) % 2 == 0;
-        final rect = Rect.fromLTWH(
-          col * squareSize,
-          row * squareSize,
-          squareSize,
-          squareSize,
+      for (int col = (row % 2 == 0 ? 0 : 1); col < cols; col += 2) {
+        canvas.drawRect(
+          Rect.fromLTWH(
+            col * squareSize,
+            row * squareSize,
+            squareSize,
+            squareSize,
+          ),
+          paint2,
         );
-        canvas.drawRect(rect, isEven ? paint1 : paint2);
       }
     }
   }

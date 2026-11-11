@@ -6,7 +6,6 @@ import 'package:collection/collection.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image/image.dart' as img;
 import '../../models/brush_model.dart';
 import '../../models/layer_model.dart';
 import '../../providers/brush_provider.dart';
@@ -47,6 +46,7 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
   Offset? _lastDragPos;
   Offset? _gradientStart;
   Offset? _gradientCurrent;
+  final Set<String> _decodingLayerIds = {};
 
   double _resolvePressure(PointerEvent event, Offset canvasPos) {
     final isStylus = event.kind == PointerDeviceKind.stylus ||
@@ -83,11 +83,17 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
 
     final brushMap = {for (final b in brushList) b.id: b};
 
-    // Decode any pending layer image data
+    // Decode any pending layer image data without duplicate concurrent decodes
     for (final layer in layerState.layers) {
-      if (layer.pixelData != null && layerState.layerImages[layer.id] == null) {
+      if (layer.pixelData != null &&
+          layerState.layerImages[layer.id] == null &&
+          !_decodingLayerIds.contains(layer.id)) {
+        _decodingLayerIds.add(layer.id);
         ui.decodeImageFromList(layer.pixelData!, (img) {
-          ref.read(layerProvider.notifier).updateLayerImage(layer.id, img);
+          _decodingLayerIds.remove(layer.id);
+          if (mounted) {
+            ref.read(layerProvider.notifier).updateLayerImage(layer.id, img);
+          }
         });
       }
     }
@@ -650,14 +656,12 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
       );
       final fillImage = await completer.future;
 
-      // Encode PNG for undo / persistence
-      final imgImage = img.Image.fromBytes(
-        width: regionW,
-        height: regionH,
-        bytes: regionRgba.buffer,
-        numChannels: 4,
-      );
-      final pngBytes = Uint8List.fromList(img.encodePng(imgImage));
+      // Fast hardware-accelerated PNG encoding for persistence
+      final byteData =
+          await fillImage.toByteData(format: ui.ImageByteFormat.png);
+      final pngBytes = byteData != null
+          ? byteData.buffer.asUint8List()
+          : Uint8List(0);
 
       ref.read(canvasProvider.notifier).commitFloodFill(
             pngBytes,

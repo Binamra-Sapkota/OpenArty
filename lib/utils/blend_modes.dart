@@ -297,7 +297,7 @@ class DrawStroke {
     Uint8List? imageBytes,
     ui.Image? floodFillImage,
   }) {
-    return DrawStroke(
+    final stroke = DrawStroke(
       points: points ?? this.points,
       color: color ?? this.color,
       brushId: brushId ?? this.brushId,
@@ -315,6 +315,10 @@ class DrawStroke {
       imageBytes: imageBytes ?? this.imageBytes,
       floodFillImage: floodFillImage ?? this.floodFillImage,
     );
+    if (points == null || identical(points, this.points)) {
+      stroke.cachedPath = _cachedPath;
+    }
+    return stroke;
   }
 
   Map<String, dynamic> toJson() => {

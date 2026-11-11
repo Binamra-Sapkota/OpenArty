@@ -527,23 +527,18 @@ class ImageUtils {
         .replaceAll("'", '&apos;');
   }
 
-  /// Save thumbnail for gallery preview
+  /// Save thumbnail for gallery preview (using native hardware-accelerated PNG encoding)
   static Future<String> saveThumbnail(
       ui.Image image, String projectId) async {
-    final pngBytes = await imageToBytes(image);
-    final imgImage = img.decodePng(pngBytes);
-    if (imgImage == null) throw Exception('Failed to decode image');
-
-    // Resize to 256x256 thumbnail
-    final thumb = img.copyResize(imgImage,
-        width: 256, height: 256, interpolation: img.Interpolation.linear);
-    final thumbBytes = img.encodePng(thumb);
+    final thumbBytes = await imageToBytes(image);
 
     final dir = await getApplicationDocumentsDirectory();
     final thumbDir = Directory('${dir.path}/OpenArty/thumbnails');
-    await thumbDir.create(recursive: true);
+    if (!await thumbDir.exists()) {
+      await thumbDir.create(recursive: true);
+    }
     final file = File('${thumbDir.path}/$projectId.png');
-    await file.writeAsBytes(thumbBytes);
+    await file.writeAsBytes(thumbBytes, flush: false);
     return file.path;
   }
 
@@ -693,6 +688,12 @@ class ImageUtils {
     List<CanvasHistoryEntry>? historyRedoStack,
   }) async {
     final file = await getProjectFile(projectId);
+    final trimmedUndo = (historyUndoStack != null && historyUndoStack.length > 10)
+        ? historyUndoStack.sublist(historyUndoStack.length - 10)
+        : (historyUndoStack ?? []);
+    final trimmedRedo = (historyRedoStack != null && historyRedoStack.length > 10)
+        ? historyRedoStack.sublist(historyRedoStack.length - 10)
+        : (historyRedoStack ?? []);
     final data = {
       'projectId': projectId,
       'savedAt': DateTime.now().toIso8601String(),
@@ -705,13 +706,13 @@ class ImageUtils {
         (key, strokes) =>
             MapEntry(key, strokes.map((s) => s.toJson()).toList()),
       ),
-      'undoStack': (historyUndoStack ?? []).map((e) => e.toJson()).toList(),
-      'redoStack': (historyRedoStack ?? []).map((e) => e.toJson()).toList(),
+      'undoStack': trimmedUndo.map((e) => e.toJson()).toList(),
+      'redoStack': trimmedRedo.map((e) => e.toJson()).toList(),
     };
-    await file.writeAsString(jsonEncode(data), flush: true);
+    await file.writeAsString(jsonEncode(data), flush: false);
   }
 
-  /// Synchronously flush all project data to disk (for app lifecycle background/detach/exit)
+  /// Synchronously flush project data to disk (for app lifecycle background/detach/exit)
   static void saveProjectDataSync({
     required String projectId,
     required List<LayerModel> layers,
@@ -725,6 +726,12 @@ class ImageUtils {
   }) {
     try {
       final file = getProjectFileSync(projectId);
+      final trimmedUndo = (historyUndoStack != null && historyUndoStack.length > 10)
+          ? historyUndoStack.sublist(historyUndoStack.length - 10)
+          : (historyUndoStack ?? []);
+      final trimmedRedo = (historyRedoStack != null && historyRedoStack.length > 10)
+          ? historyRedoStack.sublist(historyRedoStack.length - 10)
+          : (historyRedoStack ?? []);
       final data = {
         'projectId': projectId,
         'savedAt': DateTime.now().toIso8601String(),
@@ -737,8 +744,8 @@ class ImageUtils {
           (key, strokes) =>
               MapEntry(key, strokes.map((s) => s.toJson()).toList()),
         ),
-        'undoStack': (historyUndoStack ?? []).map((e) => e.toJson()).toList(),
-        'redoStack': (historyRedoStack ?? []).map((e) => e.toJson()).toList(),
+        'undoStack': trimmedUndo.map((e) => e.toJson()).toList(),
+        'redoStack': trimmedRedo.map((e) => e.toJson()).toList(),
       };
       file.writeAsStringSync(jsonEncode(data), flush: true);
     } catch (e) {
