@@ -109,7 +109,7 @@ class CanvasPainter extends CustomPainter {
           layerImg,
           src,
           dst,
-          Paint()..filterQuality = FilterQuality.high,
+          Paint()..filterQuality = FilterQuality.medium,
         );
       }
 

@@ -543,7 +543,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       layerProvider.select((s) => s.layers),
       (prev, next) {
         if (prev != null && prev != next) {
-          _saveArtworkDirectly();
+          // Do not write synchronously to disk during interactive gesture transforms
+          final isTransforming = ref.read(canvasProvider).activeTool == DrawingTool.transform;
+          if (!isTransforming) {
+            _saveArtworkDirectly();
+          }
         }
       },
     );
