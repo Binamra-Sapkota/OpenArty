@@ -315,7 +315,8 @@ class DrawStroke {
       imageBytes: imageBytes ?? this.imageBytes,
       floodFillImage: floodFillImage ?? this.floodFillImage,
     );
-    if (points == null || identical(points, this.points)) {
+    // Invalidate cached path whenever points are updated/provided
+    if (points == null) {
       stroke.cachedPath = _cachedPath;
     }
     return stroke;

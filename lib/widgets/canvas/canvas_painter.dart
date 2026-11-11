@@ -119,13 +119,13 @@ class CanvasPainter extends CustomPainter {
       // Draw committed strokes for this layer
       final strokes = committedStrokes[layer.id] ?? [];
       for (final stroke in strokes) {
-        _renderStroke(canvas, stroke, size);
+        _renderStroke(canvas, stroke, size, isCommitted: true);
       }
 
-      // Draw currently active strokes for the active layer
+      // Draw currently active strokes for the active layer in real-time
       if (layer.id == activeLayerId) {
         for (final stroke in currentStrokes) {
-          _renderStroke(canvas, stroke, size);
+          _renderStroke(canvas, stroke, size, isCommitted: false);
         }
       }
 
@@ -199,10 +199,10 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
-  void _renderStroke(Canvas canvas, DrawStroke stroke, Size size) {
+  void _renderStroke(Canvas canvas, DrawStroke stroke, Size size, {bool isCommitted = true}) {
     switch (stroke.kind) {
       case StrokeKind.freehand:
-        _drawFreehandStroke(canvas, stroke, size);
+        _drawFreehandStroke(canvas, stroke, size, isCommitted: isCommitted);
         break;
       case StrokeKind.fill:
         _drawFill(canvas, stroke);
@@ -441,7 +441,7 @@ class CanvasPainter extends CustomPainter {
     }
   }
 
-  void _drawFreehandStroke(Canvas canvas, DrawStroke stroke, Size size) {
+  void _drawFreehandStroke(Canvas canvas, DrawStroke stroke, Size size, {bool isCommitted = true}) {
     if (stroke.points.isEmpty) return;
 
     final isEraser = stroke.brushId == 'eraser_1' ||
@@ -479,8 +479,8 @@ class CanvasPainter extends CustomPainter {
       return;
     }
 
-    // Fast cached path rendering for smooth SketchBook-style continuous stroke
-    if (stroke.cachedPath != null) {
+    // Fast cached path rendering for committed strokes (zero recalculation)
+    if (isCommitted && stroke.cachedPath != null) {
       canvas.drawPath(stroke.cachedPath!, paint);
       if (symmetryMode != SymmetryMode.none) {
         _drawSymmetricPath(canvas, stroke.cachedPath!, paint);
@@ -506,7 +506,10 @@ class CanvasPainter extends CustomPainter {
       path.lineTo(points.last.position.dx, points.last.position.dy);
     }
 
-    stroke.cachedPath = path;
+    // Only cache path on committed strokes that will no longer change points
+    if (isCommitted) {
+      stroke.cachedPath = path;
+    }
 
     canvas.drawPath(path, paint);
 
