@@ -657,10 +657,10 @@ class _DrawingCanvasState extends ConsumerState<DrawingCanvas> {
       final fillImage = await completer.future;
 
       // Fast hardware-accelerated PNG encoding for persistence
-      final byteData =
+      final pngByteData =
           await fillImage.toByteData(format: ui.ImageByteFormat.png);
-      final pngBytes = byteData != null
-          ? byteData.buffer.asUint8List()
+      final pngBytes = pngByteData != null
+          ? pngByteData.buffer.asUint8List()
           : Uint8List(0);
 
       ref.read(canvasProvider.notifier).commitFloodFill(
