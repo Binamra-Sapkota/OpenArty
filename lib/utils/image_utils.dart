@@ -653,9 +653,28 @@ class ImageUtils {
     return Uint8List.fromList(img.encodePng(cropped));
   }
 
+  /// Application documents directory path cached for synchronous saves
+  static String? appDocPath;
+
+  static File getProjectFileSync(String projectId) {
+    final path = appDocPath ?? Directory.systemTemp.path;
+    final projectsDir = Directory('$path/opencreate_projects');
+    if (!projectsDir.existsSync()) {
+      projectsDir.createSync(recursive: true);
+    }
+    return File('${projectsDir.path}/$projectId.json');
+  }
+
   static Future<File> getProjectFile(String projectId) async {
-    final appDocDir = await getApplicationDocumentsDirectory();
-    final projectsDir = Directory('${appDocDir.path}/opencreate_projects');
+    final String basePath;
+    if (appDocPath != null) {
+      basePath = appDocPath!;
+    } else {
+      final appDocDir = await getApplicationDocumentsDirectory();
+      basePath = appDocDir.path;
+      appDocPath = basePath;
+    }
+    final projectsDir = Directory('$basePath/opencreate_projects');
     if (!await projectsDir.exists()) {
       await projectsDir.create(recursive: true);
     }
@@ -680,7 +699,7 @@ class ImageUtils {
       'activeLayerId': activeLayerId,
       'canvasWidth': canvasWidth,
       'canvasHeight': canvasHeight,
-      'backgroundColor': (backgroundColor ?? Colors.white).value,
+      'backgroundColor': (backgroundColor ?? Colors.white).toARGB32(),
       'layers': layers.map((l) => l.toJson()).toList(),
       'committedStrokes': committedStrokes.map(
         (key, strokes) =>
@@ -689,7 +708,42 @@ class ImageUtils {
       'undoStack': (historyUndoStack ?? []).map((e) => e.toJson()).toList(),
       'redoStack': (historyRedoStack ?? []).map((e) => e.toJson()).toList(),
     };
-    await file.writeAsString(jsonEncode(data));
+    await file.writeAsString(jsonEncode(data), flush: true);
+  }
+
+  /// Synchronously flush all project data to disk (for app lifecycle background/detach/exit)
+  static void saveProjectDataSync({
+    required String projectId,
+    required List<LayerModel> layers,
+    required Map<String, List<DrawStroke>> committedStrokes,
+    required String activeLayerId,
+    required int canvasWidth,
+    required int canvasHeight,
+    Color? backgroundColor,
+    List<CanvasHistoryEntry>? historyUndoStack,
+    List<CanvasHistoryEntry>? historyRedoStack,
+  }) {
+    try {
+      final file = getProjectFileSync(projectId);
+      final data = {
+        'projectId': projectId,
+        'savedAt': DateTime.now().toIso8601String(),
+        'activeLayerId': activeLayerId,
+        'canvasWidth': canvasWidth,
+        'canvasHeight': canvasHeight,
+        'backgroundColor': (backgroundColor ?? Colors.white).toARGB32(),
+        'layers': layers.map((l) => l.toJson()).toList(),
+        'committedStrokes': committedStrokes.map(
+          (key, strokes) =>
+              MapEntry(key, strokes.map((s) => s.toJson()).toList()),
+        ),
+        'undoStack': (historyUndoStack ?? []).map((e) => e.toJson()).toList(),
+        'redoStack': (historyRedoStack ?? []).map((e) => e.toJson()).toList(),
+      };
+      file.writeAsStringSync(jsonEncode(data), flush: true);
+    } catch (e) {
+      debugPrint('saveProjectDataSync error: $e');
+    }
   }
 
   static Future<Map<String, dynamic>?> loadProjectData(String projectId) async {

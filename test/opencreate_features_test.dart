@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -348,6 +349,126 @@ void main() {
       expect(svg.contains('<polygon points='), true);
       expect(svg.contains('<path d='), true);
       expect(svg.contains('<rect x='), true);
+    });
+  });
+
+  group('Auto-Save, Project Persistence & Universal Layer Renaming Tests', () {
+    test('renameLayer renames drawing, image, gradient, and text layers properly', () {
+      final container = ProviderContainer();
+      final layerNotifier = container.read(layerProvider.notifier);
+
+      // 1. Rename default drawing layer
+      final layer1Id = container.read(layerProvider).layers.first.id;
+      layerNotifier.renameLayer(layer1Id, 'Custom Lineart');
+      expect(container.read(layerProvider).layers.first.name, 'Custom Lineart');
+
+      // 2. Add and rename text layer
+      layerNotifier.addTextLayer(
+        'Title Text',
+        color: Colors.blue,
+        fontSize: 32.0,
+      );
+      final textLayer = container.read(layerProvider).layers.firstWhere((l) => l.isTextLayer);
+      layerNotifier.renameLayer(textLayer.id, 'My Typography Layer');
+      expect(
+        container.read(layerProvider).layers.firstWhere((l) => l.id == textLayer.id).name,
+        'My Typography Layer',
+      );
+      expect(
+        container.read(layerProvider).layers.firstWhere((l) => l.id == textLayer.id).textContent,
+        'Title Text',
+      );
+
+      // 3. Add and rename image layer
+      final dummyBytes = Uint8List.fromList([1, 2, 3, 4]);
+      layerNotifier.addImageLayer(dummyBytes);
+      final imgLayer = container.read(layerProvider).layers.firstWhere((l) => l.layerType == LayerType.image);
+      layerNotifier.renameLayer(imgLayer.id, 'Imported Photo');
+      expect(
+        container.read(layerProvider).layers.firstWhere((l) => l.id == imgLayer.id).name,
+        'Imported Photo',
+      );
+
+      // 4. Add and rename gradient layer
+      layerNotifier.addLayer();
+      final gradLayerId = container.read(layerProvider).activeLayerId;
+      layerNotifier.renameLayer(gradLayerId, 'Sunset Gradient Layer');
+      expect(
+        container.read(layerProvider).layers.firstWhere((l) => l.id == gradLayerId).name,
+        'Sunset Gradient Layer',
+      );
+    });
+
+    test('saveProjectDataSync and saveProjectData persist complete project state to disk', () async {
+      final tempDir = await Directory.systemTemp.createTemp('openarty_test_save_');
+      ImageUtils.appDocPath = tempDir.path;
+
+      final testLayers = [
+        LayerModel(id: 'layer-1', name: 'Lineart Layer'),
+        LayerModel(
+          id: 'text-1',
+          name: 'Hero Text',
+          layerType: LayerType.text,
+          textContent: 'OpenArty Forever',
+          fontSize: 40,
+        ),
+      ];
+
+      final Map<String, List<DrawStroke>> testStrokes = {
+        'layer-1': [
+          DrawStroke(
+            points: [
+              const DrawPoint(position: Offset(10, 10), pressure: 1.0),
+              const DrawPoint(position: Offset(20, 20), pressure: 1.0),
+            ],
+            color: Colors.red,
+            brushId: 'pencil',
+            brushSize: 5.0,
+            brushOpacity: 1.0,
+            layerId: 'layer-1',
+          ),
+        ],
+      };
+
+      // Test synchronous persistence (for app exit / backgrounding)
+      ImageUtils.saveProjectDataSync(
+        projectId: 'test_project_sync',
+        layers: testLayers,
+        committedStrokes: testStrokes,
+        activeLayerId: 'text-1',
+        canvasWidth: 1920,
+        canvasHeight: 1080,
+        backgroundColor: Colors.transparent,
+      );
+
+      final loadedSync = await ImageUtils.loadProjectData('test_project_sync');
+      expect(loadedSync, isNotNull);
+      expect(loadedSync!['projectId'], 'test_project_sync');
+      expect(loadedSync['activeLayerId'], 'text-1');
+      expect(loadedSync['canvasWidth'], 1920);
+      expect(loadedSync['canvasHeight'], 1080);
+      expect(loadedSync['backgroundColor'], Colors.transparent.toARGB32());
+      expect((loadedSync['layers'] as List).length, 2);
+      expect((loadedSync['layers'] as List)[0]['name'], 'Lineart Layer');
+      expect((loadedSync['layers'] as List)[1]['name'], 'Hero Text');
+
+      // Test async persistence with thumbnail
+      await ImageUtils.saveProjectData(
+        projectId: 'test_project_async',
+        layers: testLayers,
+        committedStrokes: testStrokes,
+        activeLayerId: 'layer-1',
+        canvasWidth: 1080,
+        canvasHeight: 1080,
+        backgroundColor: Colors.white,
+      );
+
+      final loadedAsync = await ImageUtils.loadProjectData('test_project_async');
+      expect(loadedAsync, isNotNull);
+      expect(loadedAsync!['projectId'], 'test_project_async');
+      expect((loadedAsync['layers'] as List).length, 2);
+
+      await tempDir.delete(recursive: true);
     });
   });
 }

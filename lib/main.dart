@@ -5,12 +5,14 @@ import 'package:path_provider/path_provider.dart';
 import 'app.dart';
 import 'models/project_model.dart';
 import 'models/brush_model.dart';
+import 'utils/image_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Hive
+  // Initialize Hive and document path
   final appDocDir = await getApplicationDocumentsDirectory();
+  ImageUtils.appDocPath = appDocDir.path;
   await Hive.initFlutter(appDocDir.path);
 
   // Register Hive adapters

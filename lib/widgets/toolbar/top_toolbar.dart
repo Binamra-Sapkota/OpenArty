@@ -139,6 +139,16 @@ class TopToolbar extends ConsumerWidget {
                 onPressed: onToggleLayerPanel,
               ),
 
+              // Save Project button
+              IconButton(
+                icon: const Icon(Icons.bookmark_add_outlined,
+                    size: 20, color: Colors.white70),
+                tooltip: 'Save Project',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                onPressed: onManualSave,
+              ),
+
               // Overflow Menu for All Secondary Actions
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
@@ -149,10 +159,24 @@ class TopToolbar extends ConsumerWidget {
                 onSelected: (value) => _handleMenuSelection(value, context, ref),
                 itemBuilder: (ctx) => [
                   const PopupMenuItem(
+                    value: 'save_artwork',
+                    child: Row(
+                      children: [
+                        Icon(Icons.bookmark_add,
+                            color: Color(0xFF6C63FF), size: 18),
+                        SizedBox(width: 10),
+                        Text('Save Project to Gallery',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
                     value: 'export',
                     child: Row(
                       children: [
-                        Icon(Icons.share, color: Color(0xFF6C63FF), size: 18),
+                        Icon(Icons.share, color: Colors.white70, size: 18),
                         SizedBox(width: 10),
                         Text('Export & Share', style: TextStyle(color: Colors.white)),
                       ],
@@ -206,20 +230,6 @@ class TopToolbar extends ConsumerWidget {
                     child: const Text('Stylus Only Mode', style: TextStyle(color: Colors.white)),
                   ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'save_artwork',
-                    child: Row(
-                      children: [
-                        Icon(Icons.save_outlined,
-                            color: Color(0xFF6C63FF), size: 18),
-                        SizedBox(width: 10),
-                        Text('Save Artwork',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
                   const PopupMenuItem(
                     value: 'clear_layer',
                     child: Row(

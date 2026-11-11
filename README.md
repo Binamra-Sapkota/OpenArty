@@ -1,11 +1,11 @@
 # OpenArty 🎨
 
-[![Release](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/Binamra-Sapkota/OpenArty/releases)
-[![Direct APK Download](https://img.shields.io/badge/Download-Direct%20APK-brightgreen.svg?logo=android)](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)
+[![Release](https://img.shields.io/badge/Release-v1.1-blue.svg)](https://github.com/Binamra-Sapkota/OpenArty/releases)
+[![Direct APK Download](https://img.shields.io/badge/Download-Direct%20APK-brightgreen.svg?logo=android)](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1/app-release.apk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20(API%2021%2B)-success.svg)](https://flutter.dev)
 
-> **[Direct APK Download Link: Click Here to Download OpenArty v1.1.0 APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)**
+> **[Direct APK Download Link: Click Here to Download OpenArty v1.1 APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1/app-release.apk)**
 
 **OpenArty** is a completely free, lightweight, privacy-focused, open-source digital painting, sketch, and vector illustration app built with Flutter. It combines the ergonomic, minimal touch interface of **Autodesk SketchBook** with the powerful multi-layer, blending mode, and vector styling capabilities of **Procreate**.
 
@@ -17,7 +17,7 @@ Designed specifically for smartphones, foldables, and tablets, OpenArty is engin
 
 You can download and install the latest release directly onto any Android device:
 
-- **Direct Download**: **[OpenArty v1.1.0 Release APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1.0/app-release.apk)**
+- **Direct Download**: **[OpenArty v1.1 Release APK](https://github.com/Binamra-Sapkota/OpenArty/releases/download/v1.1/app-release.apk)**
 - **All Releases & Source**: [GitHub Releases Page](https://github.com/Binamra-Sapkota/OpenArty/releases)
 
 ---
@@ -83,10 +83,11 @@ Draw crisp vector shapes with either outline stroke or solid fill:
 - **Customizable Gradients**: Create linear and radial gradients with customizable colors and transparency across multiple layers.
 - **Flood Fill Bucket**: Fill enclosed contours or entire layers with tolerance control.
 
-### 💾 10-Second Auto-Save & Manual Save Option
-- **Continuous 10-Second Auto-Save**: Your artwork automatically persists every 10 seconds.
-- **Safe Exit Interception**: Navigating away or quitting automatically saves project state and background settings asynchronously before closing so no work is ever lost.
-- **Manual Save Option**: Tap `Save Artwork` in the 3-dot overflow menu for immediate manual confirmation.
+### 💾 8-Second Auto-Save, Exit Protection & "Save Project"
+- **Continuous 8-Second Auto-Save**: Your artwork automatically persists every 8 seconds.
+- **Accidental Exit Protection**: If you mistakenly quit or switch apps while drawing, synchronous file write immediately flushes changes to storage so no strokes or layers are ever lost.
+- **Dedicated "Save Project to Gallery" Option**: Tap the Save icon or option in the top toolbar to name or rename your artwork with your mobile keyboard and reopen it anytime from the Gallery.
+- **Universal Layer Renaming**: Rename any layer (drawing, image, gradient, or text) easily using your mobile keyboard via direct tap or layer option menu.
 - **Persistent Cross-Session Undo/Redo**: Undo and redo history across strokes, layers, text, and gradients is preserved across app sessions.
 
 ### 🏁 Transparent Canvas & Background Colors

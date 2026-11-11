@@ -80,14 +80,30 @@ class LayerItem extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    layer.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                      color: Colors.white,
-                      fontSize: 14,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => _showRenameDialog(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              layer.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.edit_outlined, size: 13, color: Colors.white38),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -100,6 +116,12 @@ class LayerItem extends StatelessWidget {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton(
+                  icon: const Icon(Icons.drive_file_rename_outline,
+                      size: 18, color: Colors.white54),
+                  tooltip: 'Rename Layer',
+                  onPressed: () => _showRenameDialog(context),
+                ),
                 if (layer.isTextLayer)
                   IconButton(
                     icon: const Icon(Icons.edit, size: 18, color: Color(0xFF6C63FF)),
@@ -266,34 +288,91 @@ class LayerItem extends StatelessWidget {
 
   void _showRenameDialog(BuildContext context) {
     final controller = TextEditingController(text: layer.name);
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+
+    String layerTypeName = 'drawing';
+    if (layer.isTextLayer) {
+      layerTypeName = 'text';
+    } else if (layer.layerType == LayerType.image || layer.pixelData != null) {
+      layerTypeName = 'image';
+    } else if (layer.name.startsWith('Gradient')) {
+      layerTypeName = 'gradient';
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
+        backgroundColor: const Color(0xFF242424),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Rename Layer',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-          decoration: const InputDecoration(
-            labelText: 'Layer Name',
-            labelStyle: TextStyle(color: Colors.white70),
-            enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white38)),
-            focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF6C63FF), width: 2)),
-          ),
+        title: Row(
+          children: const [
+            Icon(Icons.drive_file_rename_outline,
+                color: Color(0xFF6C63FF), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Rename Layer',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter a custom name for this $layerTypeName layer:',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Layer Name',
+                labelStyle: TextStyle(color: Color(0xFF6C63FF)),
+                hintText: 'e.g. Lineart, Background, Colors',
+                hintStyle: TextStyle(color: Colors.white30),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF6C63FF), width: 1.5),
+                ),
+              ),
+              onSubmitted: (val) {
+                final newName = val.trim();
+                if (newName.isNotEmpty) {
+                  onRename?.call(newName);
+                }
+                Navigator.of(ctx).pop();
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
           ),
-          ElevatedButton(
+          ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF)),
+              backgroundColor: const Color(0xFF6C63FF),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: const Icon(Icons.check, size: 16, color: Colors.white),
+            label: const Text('Rename', style: TextStyle(color: Colors.white)),
             onPressed: () {
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
@@ -301,7 +380,6 @@ class LayerItem extends StatelessWidget {
               }
               Navigator.of(ctx).pop();
             },
-            child: const Text('Save', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

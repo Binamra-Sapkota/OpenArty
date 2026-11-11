@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/project_model.dart';
 import '../models/canvas_model.dart';
+import '../models/layer_model.dart';
+import '../utils/image_utils.dart';
 import 'canvas_screen.dart';
 
 const _uuid = Uuid();
@@ -171,6 +173,21 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     );
 
     _projectsBox.put(newProject.id, newProject);
+
+    // Immediately persist initial project JSON file
+    ImageUtils.saveProjectDataSync(
+      projectId: newProject.id,
+      layers: [LayerModel(id: 'layer_1', name: 'Layer 1')],
+      committedStrokes: {},
+      activeLayerId: 'layer_1',
+      canvasWidth: width,
+      canvasHeight: height,
+      backgroundColor: backgroundColor,
+    );
+
+    if (Hive.isBoxOpen('settings')) {
+      Hive.box('settings').put('last_opened_project_id', newProject.id);
+    }
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -569,6 +586,10 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                             ),
                             child: InkWell(
                               onTap: () {
+                                if (Hive.isBoxOpen('settings')) {
+                                  Hive.box('settings').put(
+                                      'last_opened_project_id', project.id);
+                                }
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => CanvasScreen(
@@ -641,9 +662,66 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                           ),
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.delete_outline, size: 18),
+                                          icon: const Icon(Icons.delete_outline,
+                                              size: 18),
                                           color: Colors.white38,
-                                          onPressed: () => _projectsBox.delete(project.id),
+                                          onPressed: () async {
+                                            final confirmed =
+                                                await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                backgroundColor:
+                                                    const Color(0xFF242424),
+                                                title: const Text(
+                                                    'Delete Artwork?',
+                                                    style: TextStyle(
+                                                        color: Colors.white)),
+                                                content: Text(
+                                                    'Are you sure you want to delete "${project.name}"?',
+                                                    style: const TextStyle(
+                                                        color: Colors.white70)),
+                                                actions: [
+                                                  TextButton(
+                                                    child: const Text('Cancel',
+                                                        style: TextStyle(
+                                                            color:
+                                                                Colors.white38)),
+                                                    onPressed: () =>
+                                                        Navigator.of(ctx)
+                                                            .pop(false),
+                                                  ),
+                                                  ElevatedButton(
+                                                    style:
+                                                        ElevatedButton.styleFrom(
+                                                            backgroundColor:
+                                                                Colors
+                                                                    .redAccent),
+                                                    child: const Text('Delete',
+                                                        style: TextStyle(
+                                                            color:
+                                                                Colors.white)),
+                                                    onPressed: () =>
+                                                        Navigator.of(ctx)
+                                                            .pop(true),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                            if (confirmed == true) {
+                                              if (Hive.isBoxOpen('settings')) {
+                                                final lastId = Hive.box(
+                                                        'settings')
+                                                    .get(
+                                                        'last_opened_project_id');
+                                                if (lastId == project.id) {
+                                                  Hive.box('settings').delete(
+                                                      'last_opened_project_id');
+                                                }
+                                              }
+                                              await _projectsBox
+                                                  .delete(project.id);
+                                            }
+                                          },
                                         ),
                                       ],
                                     ),

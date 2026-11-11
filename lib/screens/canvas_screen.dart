@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../models/canvas_model.dart';
 import '../models/history_model.dart';
 import '../models/project_model.dart';
@@ -39,11 +40,40 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   bool _isLayerPanelOpen = false;
   Timer? _autoSaveTimer;
   bool _isSaving = false;
+  late String _effectiveProjectId;
+  late String _effectiveProjectName;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    _effectiveProjectId = widget.project?.id ?? const Uuid().v4();
+    _effectiveProjectName = widget.project?.name ?? 'Untitled Artwork';
+
+    // Ensure the project is registered in Hive so it is immediately indexed
+    if (Hive.isBoxOpen('projects')) {
+      final box = Hive.box<ProjectModel>('projects');
+      if (!box.containsKey(_effectiveProjectId)) {
+        box.put(
+          _effectiveProjectId,
+          ProjectModel(
+            id: _effectiveProjectId,
+            name: _effectiveProjectName,
+            createdAt: DateTime.now(),
+            modifiedAt: DateTime.now(),
+            canvasWidth: widget.initialCanvas?.width ?? 1080,
+            canvasHeight: widget.initialCanvas?.height ?? 1080,
+            dpi: widget.initialCanvas?.dpi ?? 150,
+            layerCount: 1,
+          ),
+        );
+      }
+    }
+    if (Hive.isBoxOpen('settings')) {
+      Hive.box('settings').put('last_opened_project_id', _effectiveProjectId);
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadAndRestoreProject();
       _startAutoSaveTimer();
@@ -62,13 +92,14 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
     if (lifecycleState == AppLifecycleState.paused ||
         lifecycleState == AppLifecycleState.inactive ||
+        lifecycleState == AppLifecycleState.hidden ||
         lifecycleState == AppLifecycleState.detached) {
       _saveArtworkDirectly();
     }
   }
 
   Future<void> _loadAndRestoreProject() async {
-    final projectId = widget.project?.id ?? 'default_artwork';
+    final projectId = _effectiveProjectId;
     final savedData = await ImageUtils.loadProjectData(projectId);
 
     if (savedData != null && mounted) {
@@ -150,32 +181,161 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
           );
       ref.read(layerProvider.notifier).resetLayers(layerId: activeLayer);
       ref.read(canvasProvider.notifier).initCanvas(canvasModel, activeLayer);
+
+      // Ensure the project file is immediately flushed to disk
+      _saveArtworkDirectly();
     }
   }
 
   void _startAutoSaveTimer() {
     _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Save everything automatically every 8 seconds
+    _autoSaveTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       _saveArtworkNow();
     });
   }
 
-  Future<void> _manualSaveArtwork() async {
-    await _saveArtworkNow();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
-              SizedBox(width: 10),
-              Text('Artwork saved successfully!'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF2C2C2C),
+  Future<void> _showSaveProjectDialog() async {
+    final controller = TextEditingController(text: _effectiveProjectName);
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+
+    final canvasState = ref.read(canvasProvider);
+    final layerState = ref.read(layerProvider);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF242424),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.bookmark_add, color: Color(0xFF6C63FF), size: 24),
+            SizedBox(width: 10),
+            Text(
+              'Save Project',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
         ),
-      );
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Save your artwork to the gallery to reopen and continue working later.',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Project Name',
+                labelStyle: TextStyle(color: Color(0xFF6C63FF)),
+                hintText: 'Enter project name',
+                hintStyle: TextStyle(color: Colors.white30),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF6C63FF), width: 1.5),
+                ),
+              ),
+              onSubmitted: (_) => Navigator.of(ctx).pop(true),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${canvasState.canvas.width} × ${canvasState.canvas.height} px',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  Text(
+                    '${layerState.layers.length} Layers',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          size: 14, color: Colors.greenAccent),
+                      SizedBox(width: 4),
+                      Text(
+                        'Auto-saves 8s',
+                        style: TextStyle(color: Colors.greenAccent, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C63FF),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: const Icon(Icons.save, size: 18, color: Colors.white),
+            label: const Text('Save to Gallery',
+                style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true && mounted) {
+      final newName = controller.text.trim();
+      if (newName.isNotEmpty) {
+        _effectiveProjectName = newName;
+      }
+      await _saveArtworkNow();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle,
+                    color: Colors.greenAccent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Project "$_effectiveProjectName" saved to gallery!',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: const Color(0xFF2C2C2C),
+          ),
+        );
+      }
     }
   }
 
@@ -187,10 +347,24 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       final layerState = ref.read(layerProvider);
       if (layerState.layers.isEmpty) return;
 
-      final projectId = widget.project?.id ?? 'default_artwork';
+      final projectId = _effectiveProjectId;
       final canvasW = canvasState.canvas.width;
       final canvasH = canvasState.canvas.height;
 
+      // 1. Synchronous flush for immediate persistence
+      ImageUtils.saveProjectDataSync(
+        projectId: projectId,
+        layers: layerState.layers,
+        committedStrokes: canvasState.committedStrokes,
+        activeLayerId: layerState.activeLayerId,
+        canvasWidth: canvasW,
+        canvasHeight: canvasH,
+        backgroundColor: canvasState.canvas.backgroundColor,
+        historyUndoStack: canvasState.historyUndoStack,
+        historyRedoStack: canvasState.historyRedoStack,
+      );
+
+      // 2. Async verified write
       await ImageUtils.saveProjectData(
         projectId: projectId,
         layers: layerState.layers,
@@ -203,15 +377,39 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         historyRedoStack: canvasState.historyRedoStack,
       );
 
+      // 3. Register and update Hive project model
+      if (Hive.isBoxOpen('projects')) {
+        final box = Hive.box<ProjectModel>('projects');
+        var p = box.get(projectId);
+        if (p == null) {
+          p = ProjectModel(
+            id: projectId,
+            name: _effectiveProjectName,
+            createdAt: DateTime.now(),
+            modifiedAt: DateTime.now(),
+            canvasWidth: canvasW,
+            canvasHeight: canvasH,
+            dpi: widget.project?.dpi ?? widget.initialCanvas?.dpi ?? 150,
+            layerCount: layerState.layers.length,
+          );
+          await box.put(projectId, p);
+        } else {
+          p.name = _effectiveProjectName;
+          p.modifiedAt = DateTime.now();
+          p.canvasWidth = canvasW;
+          p.canvasHeight = canvasH;
+          p.layerCount = layerState.layers.length;
+          await p.save();
+        }
+      }
+
       if (Hive.isBoxOpen('settings')) {
         Hive.box('settings').put('last_opened_project_id', projectId);
       }
 
-      // Save thumbnail
-      if (widget.project != null) {
-        await _saveProjectThumbnail(
-            projectId, canvasW, canvasH, layerState, canvasState);
-      }
+      // 4. Save thumbnail
+      await _saveProjectThumbnail(
+          projectId, canvasW, canvasH, layerState, canvasState);
     } catch (e) {
       debugPrint('Auto-save error: $e');
     } finally {
@@ -225,11 +423,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       final layerState = ref.read(layerProvider);
       if (layerState.layers.isEmpty) return;
 
-      final projectId = widget.project?.id ?? 'default_artwork';
+      final projectId = _effectiveProjectId;
       final canvasW = canvasState.canvas.width;
       final canvasH = canvasState.canvas.height;
 
-      ImageUtils.saveProjectData(
+      ImageUtils.saveProjectDataSync(
         projectId: projectId,
         layers: layerState.layers,
         committedStrokes: canvasState.committedStrokes,
@@ -240,6 +438,31 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         historyUndoStack: canvasState.historyUndoStack,
         historyRedoStack: canvasState.historyRedoStack,
       );
+
+      if (Hive.isBoxOpen('projects')) {
+        final box = Hive.box<ProjectModel>('projects');
+        var p = box.get(projectId);
+        if (p == null) {
+          p = ProjectModel(
+            id: projectId,
+            name: _effectiveProjectName,
+            createdAt: DateTime.now(),
+            modifiedAt: DateTime.now(),
+            canvasWidth: canvasW,
+            canvasHeight: canvasH,
+            dpi: widget.project?.dpi ?? widget.initialCanvas?.dpi ?? 150,
+            layerCount: layerState.layers.length,
+          );
+          box.put(projectId, p);
+        } else {
+          p.name = _effectiveProjectName;
+          p.modifiedAt = DateTime.now();
+          p.canvasWidth = canvasW;
+          p.canvasHeight = canvasH;
+          p.layerCount = layerState.layers.length;
+          p.save();
+        }
+      }
 
       if (Hive.isBoxOpen('settings')) {
         Hive.box('settings').put('last_opened_project_id', projectId);
@@ -283,7 +506,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       final image = await picture.toImage(thumbW, thumbH);
       final thumbPath = await ImageUtils.saveThumbnail(image, projectId);
 
-      if (widget.project != null && Hive.isBoxOpen('projects')) {
+      if (Hive.isBoxOpen('projects')) {
         final box = Hive.box<ProjectModel>('projects');
         final p = box.get(projectId);
         if (p != null) {
@@ -303,6 +526,24 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       (prev, next) {
         if (next != prev) {
           ref.read(canvasProvider.notifier).setActiveLayer(next);
+        }
+      },
+    );
+
+    // Synchronously flush changes to disk on stroke completion or layer changes
+    ref.listen<Map<String, List<DrawStroke>>>(
+      canvasProvider.select((s) => s.committedStrokes),
+      (prev, next) {
+        if (prev != null && prev != next) {
+          _saveArtworkDirectly();
+        }
+      },
+    );
+    ref.listen<List<LayerModel>>(
+      layerProvider.select((s) => s.layers),
+      (prev, next) {
+        if (prev != null && prev != next) {
+          _saveArtworkDirectly();
         }
       },
     );
@@ -339,7 +580,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                         if (_isLayerPanelOpen) _isBrushPanelOpen = false;
                       });
                     },
-                    onManualSave: _manualSaveArtwork,
+                    onManualSave: _showSaveProjectDialog,
                     isBrushPanelOpen: _isBrushPanelOpen,
                     isLayerPanelOpen: _isLayerPanelOpen,
                   ),
